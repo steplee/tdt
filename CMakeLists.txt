@@ -9,20 +9,23 @@ include_directories(${PROJECT_SOURCE_DIR})
 
 find_package(glfw3 REQUIRED)
 find_package(Eigen3 REQUIRED)
+find_package(Sophus REQUIRED)
 
 
 add_executable(tdt_main
   src/main.cc
-  src/window.cc
+  src/twindow.cc
   src/program_cache.cc
   src/scene_graph.cc
+  src/camera.cc
   )
 
 target_link_libraries(tdt_main
   m pthread
-  #gflw
   ${GLFW3_LIBRARY}
-  Eigen3::Eigen
   GL GLU GLEW
+
+  Eigen3::Eigen
+  Sophus::Sophus
   )
 target_compile_features(tdt_main PUBLIC cxx_std_14)
