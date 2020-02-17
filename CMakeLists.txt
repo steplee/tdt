@@ -18,6 +18,8 @@ add_executable(tdt_main
   src/program_cache.cc
   src/scene_graph.cc
   src/camera.cc
+
+  src/gltf_node.cc
   )
 
 target_link_libraries(tdt_main

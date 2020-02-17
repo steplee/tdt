@@ -71,12 +71,17 @@ void TdtSceneNode::render(SceneGraphTraversal& sgt) {
   test_find_quadrant();
 }
 
+#include "gltf_node.h"
+
 SceneGraph::SceneGraph()
   : tree(AlignedBox<float,3> ( Vector3f{-100,-100,-100} , Vector3f{100,100,100} ))
 {
   //TdtSceneNode node0;
   auto node0 = std::make_unique<TdtSceneNode>();
   tree.add(std::move(node0));
+
+  auto node1 = std::make_unique<GltfNode>("../3rdparty/tinygltf/models/Cube/Cube.gltf");
+  tree.add(std::move(node1));
 }
 
 void SceneGraph::render(const RenderState& rs) {
