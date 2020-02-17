@@ -4,6 +4,10 @@ using namespace Eigen;
 static Eigen::Matrix4f MakeInfReversedZProjRH(float fovY_radians, float aspectWbyH, float znear, float zfar)
 {
   // https://www.khronos.org/opengl/wiki/GluPerspective_code
+  //
+  // NOTE: This is like glFrustum *BUT* we look down Z+ (normally Z- in OpenGL).
+  // I do this because it makes more sense to me and basically all computer vision
+  // work uses this formalism.
 
   Eigen::Matrix4f out;
   out.setZero();
@@ -52,6 +56,11 @@ void InteractiveCamera::step() {
   if (right_down)
     right_mouse_vel += mouse_acc;
   right_mouse_vel = right_mouse_vel - right_mouse_vel * .1;
+  mouse_acc.setZero();
+
+  scroll_vel -= scroll_acc;
+  scroll_vel = scroll_vel - scroll_vel * .4;
+  scroll_acc.setZero();
 
   if (!left_mouse_vel.isZero(1e-3) and !just_down) {
     float speed = .01;
@@ -62,9 +71,9 @@ void InteractiveCamera::step() {
     pose.so3() = pose.so3() * SO3::rotZ(left_mouse_vel(0) * speed);
   }
 
-  if (!right_mouse_vel.isZero(1e-3) and !just_down) {
+  if (!scroll_vel.isZero(1e-5)) {
     pose = pose.inverse();
-    pose.translation() = pose.translation() + pose.translation() * right_mouse_vel(1) * .01;
+    pose.translation() = pose.translation() + pose.translation() * scroll_vel(1) * .02;
     pose = pose.inverse();
   }
 
@@ -95,12 +104,10 @@ void InteractiveCamera::clickFunc(int button, int action, int mods) {
     if (button == GLFW_MOUSE_BUTTON_LEFT) left_down = true;
     else if (button == GLFW_MOUSE_BUTTON_RIGHT) right_down = true;
     just_down = true;
-    mouse_acc.setZero();
   }
   if (action == GLFW_RELEASE) {
     if (button == GLFW_MOUSE_BUTTON_LEFT) left_down = false;
     else if (button == GLFW_MOUSE_BUTTON_RIGHT) right_down = false;
-    mouse_acc.setZero();
   }
 
 }
@@ -113,5 +120,8 @@ void InteractiveCamera::motionFunc(double xpos, double ypos) {
 
   prev_mouse = {xpos, ypos};
   just_down = false;
-
+}
+void InteractiveCamera::scrollFunc(double dx, double dy) {
+  scroll_acc = {dx , dy};
+  std::cout << "SCROLL: " << scroll_acc.transpose() << "\n";
 }

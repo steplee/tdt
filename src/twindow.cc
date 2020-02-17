@@ -18,6 +18,9 @@ static void _clickFunc(GLFWwindow* window, int button, int action, int mods) {
 static void _motionFunc(GLFWwindow* window, double xpos, double ypos) {
   TWindow::get()->motionFunc(window, xpos, ypos);
 }
+static void _scrollFunc(GLFWwindow* window, double dx, double dy) {
+  TWindow::get()->scrollFunc(window, dx,dy);
+}
 
 TWindow::~TWindow() { TWindow::singleton = nullptr; }
 
@@ -58,6 +61,7 @@ TWindow::TWindow(int width, int height, bool headless)
   glfwSetKeyCallback(window, &_keyboardFunc);
   glfwSetMouseButtonCallback(window, &_clickFunc);
   glfwSetCursorPosCallback(window, &_motionFunc);
+  glfwSetScrollCallback(window, &_scrollFunc);
 
   glewExperimental = true;  // This may be only true for linux environment.
   if (glewInit() != GLEW_OK) {
@@ -111,17 +115,17 @@ void TWindow::keyboardFunc(GLFWwindow* window, int key, int scancode, int action
 void TWindow::clickFunc(GLFWwindow* window, int button, int action, int mods) {
   double x, y;
   glfwGetCursorPos(window, &x, &y);
-  //spdlog::info("Clicked: {} ({} {}, {} {})", button, action, mods, x,y);
-
   for (const auto& io : ioListeners)
     io->clickFunc(button, action, mods);
 }
 
 void TWindow::motionFunc(GLFWwindow* window, double xpos, double ypos) {
-  //spdlog::info("MouseMotion: {} {}", xpos,ypos);
-
   for (const auto& io : ioListeners)
     io->motionFunc(xpos,ypos);
+}
+void TWindow::scrollFunc(GLFWwindow* window, double dx, double dy) {
+  for (const auto& io : ioListeners)
+    io->scrollFunc(dx,dy);
 }
 
 

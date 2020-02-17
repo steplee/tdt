@@ -27,6 +27,7 @@ class TWindow {
     void keyboardFunc(GLFWwindow* window, int key, int scancode, int action, int mods);
     void clickFunc(GLFWwindow* window, int button, int action, int mods);
     void motionFunc(GLFWwindow* window, double xpos, double ypos);
+    void scrollFunc(GLFWwindow* window, double dx, double dy);
 
     inline void registerIoListener(UsesIO* io) { ioListeners.insert(io); };
     inline void unregisterIoListener(UsesIO* io) { if (ioListeners.find(io) != ioListeners.end()) ioListeners.erase(io); };
@@ -71,4 +72,5 @@ class UsesIO {
     virtual void keyboardFunc(int key, int scancode, int action, int mods) {}
     virtual void clickFunc(int button, int action, int mods) {}
     virtual void motionFunc(double xpos, double ypos) {}
+    virtual void scrollFunc(double dx, double dy) {}
 };

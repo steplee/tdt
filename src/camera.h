@@ -42,12 +42,16 @@ class InteractiveCamera : public UsesIO {
     virtual void keyboardFunc(int key, int scancode, int action, int mods) override;
     virtual void clickFunc(int button, int action, int mods) override;
     virtual void motionFunc(double xpos, double ypos) override;
+    virtual void scrollFunc(double dx, double dy) override;
 
   protected:
+    // TODO: Implement mouse picking so that we can 'pivot' around a 3d point, rather than <0,0,0>
     Eigen::Vector2f prev_mouse;
     Eigen::Vector2f left_mouse_vel = Eigen::Vector2f::Zero();
     Eigen::Vector2f right_mouse_vel = Eigen::Vector2f::Zero();
+    Eigen::Vector2f scroll_vel = Eigen::Vector2f::Zero();
     Eigen::Vector2f mouse_acc = Eigen::Vector2f::Zero();
+    Eigen::Vector2f scroll_acc = Eigen::Vector2f::Zero();
     bool left_down = false, right_down = false, just_down = false;
 
     CamSpec spec;
