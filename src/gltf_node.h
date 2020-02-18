@@ -1,12 +1,20 @@
 #pragma once
 
+#include <Eigen/StdVector>
+#include <Eigen/Core>
+
+#define STB_IMAGE_IMPLEMENTATION
+#define STB_IMAGE_WRITE_IMPLEMENTATION
+#include "tinygltf/tiny_gltf.h"
+
 #include "scene_graph.h"
 
-#include <Eigen/Core>
 
 #include <GL/glew.h>
 
-namespace tinygltf { struct Model; }
+//namespace tinygltf { struct Model; struct Node; struct Primitive; }
+
+
 
 class GltfNode : public SceneNode {
   public:
@@ -19,6 +27,7 @@ class GltfNode : public SceneNode {
   private:
     void setup(tinygltf::Model& model);
 
-    GLuint vbo;
-    GLuint n_verts;
+    std::vector<GLuint> vbos;
+
+    tinygltf::Model model;
 };

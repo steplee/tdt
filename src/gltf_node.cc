@@ -1,10 +1,8 @@
+#define TINYGLTF_IMPLEMENTATION
 #include "gltf_node.h"
+
 #include <iostream>
 
-#define TINYGLTF_IMPLEMENTATION
-#define STB_IMAGE_IMPLEMENTATION
-#define STB_IMAGE_WRITE_IMPLEMENTATION
-#include "tinygltf/tiny_gltf.h"
 
 #include <cstdlib>
 
@@ -99,7 +97,6 @@ static std::string int_to_glfw_type(int t) {
 }
 
 GltfNode::GltfNode(const std::string& path) {
-  Model model;
   TinyGLTF loader;
   std::string err, warn;
   bool good = loader.LoadASCIIFromFile(&model, &err, &warn, path);
@@ -117,28 +114,31 @@ GltfNode::GltfNode(const std::string& path) {
 
 void GltfNode::setup(tinygltf::Model& model) {
   // Create VBOs.
+  vbos.resize(model.buffers.size());
+  glGenBuffers(model.buffers.size(), vbos.data());
   for (int i=0; i<model.buffers.size(); i++) {
     std::cout << "  - Creating Buffer " << i << ": " << model.buffers[i].name << "\n";
     std::cout << "       - size: " << model.buffers[i].data.size() << "\n";
 
-    glGenBuffers(1, &vbo);
-    glBindBuffer(GL_ARRAY_BUFFER, vbo);
+    glBindBuffer(GL_ARRAY_BUFFER, vbos[i]);
     glBufferData(GL_ARRAY_BUFFER, model.buffers[i].data.size(), model.buffers[i].data.data(),
         GL_STATIC_DRAW);
-    glBindBuffer(GL_ARRAY_BUFFER, 0);
+    model.buffers[i].data.clear();
   }
-  // Create BufferViews.
+  glBindBuffer(GL_ARRAY_BUFFER, 0);
+
+  // BufferViews.
   for (int i=0; i<model.bufferViews.size(); i++) {
-    std::cout << "  - Creating BufferView " << i << ": " << model.bufferViews[i].name << "\n";
+    std::cout << "  - BufferView " << i << ": " << model.bufferViews[i].name << "\n";
     std::cout << "       - parent: " << model.bufferViews[i].buffer << "\n";
     std::cout << "       - offset: " << model.bufferViews[i].byteOffset << "\n";
     std::cout << "       - length: " << model.bufferViews[i].byteLength << "\n";
     std::cout << "       - stride: " << model.bufferViews[i].byteStride << "\n";
     std::cout << "       - target: " << int_to_glfw_type(model.bufferViews[i].target) << "\n";
   }
-  // Create Accessors.
+  // Accessors.
   for (int i=0; i<model.accessors.size(); i++) {
-    std::cout << "  - Creating Accessor " << i << ": " << model.accessors[i].name << "\n";
+    std::cout << "  - Accessor " << i << ": " << model.accessors[i].name << "\n";
     std::cout << "       - parent  : " << model.accessors[i].bufferView << "\n";
     std::cout << "       - count   : " << model.accessors[i].count << "\n";
     std::cout << "       - offset  : " << model.accessors[i].byteOffset << "\n";
@@ -147,17 +147,51 @@ void GltfNode::setup(tinygltf::Model& model) {
   }
 
   // Create Textures.
-  exit(0);
-
 }
 
 
 
 void GltfNode::render(SceneGraphTraversal& sgt) {
-  std::cout << "rendering gltf.\n";
-  glBindBuffer(GL_ARRAY_BUFFER, vbo);
-  glEnableClientState(GL_VERTEX_ARRAY);
-  glDrawArrays(GL_ARRAY_BUFFER, 0, 8);
-  glDisableClientState(GL_VERTEX_ARRAY);
-  glBindBuffer(GL_ARRAY_BUFFER, 0);
+  std::cout << "rendering " << model.meshes.size() << " GlTF meshes.\n";
+
+  for (const auto& mesh : model.meshes) {
+    for (const auto& prim : mesh.primitives) {
+      //auto bufView = acc.
+      int draw_count = 0;
+      for (const auto key_accid : prim.attributes) {
+        auto acc = model.accessors[key_accid.second];
+        auto bv = model.bufferViews[acc.bufferView];
+        glBindBuffer(GL_ARRAY_BUFFER, vbos[bv.buffer]);
+
+        if (key_accid.first == "POSITION") {
+          glEnableClientState(GL_VERTEX_ARRAY);
+          // Obviously do not use '3', nor type: should get from gltf.
+          glVertexPointer(3, GL_FLOAT, bv.byteStride, (void*) (bv.byteOffset+acc.byteOffset));
+          //glVertexPointer(acc.type, acc.componentType, bv.byteStride, (void*) (bv.byteOffset+acc.byteOffset));
+          draw_count = acc.count;
+          std::cout << " - Setting vertex pointer with cnt: " << acc.count << " off: " << bv.byteOffset+acc.byteOffset
+                    << " stride: " << bv.byteStride << " ctype: " << acc.componentType
+                    << " type: " <<acc.type << "\n";
+        }
+      }
+
+      if (prim.indices >= 0) {
+        auto ind_acc = model.accessors[prim.indices];
+        auto ind_bv = model.bufferViews[ind_acc.bufferView];
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, vbos[ind_bv.buffer]);
+        glIndexPointer(ind_acc.componentType, ind_bv.byteStride, (void*) (ind_bv.byteOffset+ind_acc.byteOffset));
+        std::cout << " - Drawing " << ind_acc.count << " indices.\n";
+        glDrawElements(prim.mode, ind_acc.count, ind_acc.componentType, 0);
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+      } else {
+        //glDrawArrays
+        std::cout << " - Drawing " << draw_count << " arrays.\n";
+      }
+
+      glDisableClientState(GL_VERTEX_ARRAY);
+      glDisableClientState(GL_TEXTURE_COORD_ARRAY);
+      glDisableClientState(GL_NORMAL_ARRAY);
+      glDisableClientState(GL_COLOR_ARRAY);
+    }
+  }
 }

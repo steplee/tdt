@@ -1,5 +1,6 @@
 #include "scene_graph.h"
 #include <iostream>
+#include "gltf_node.h"
 
 using namespace Eigen;
 
@@ -71,7 +72,6 @@ void TdtSceneNode::render(SceneGraphTraversal& sgt) {
   test_find_quadrant();
 }
 
-#include "gltf_node.h"
 
 SceneGraph::SceneGraph()
   : tree(AlignedBox<float,3> ( Vector3f{-100,-100,-100} , Vector3f{100,100,100} ))
