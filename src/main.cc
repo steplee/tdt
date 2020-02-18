@@ -28,6 +28,8 @@ int main() {
 
   SceneGraph sg;
 
+  glEnable(GL_DEPTH_TEST);
+
   for (int i=0; i<50000; i++) {
     window.startFrame();
 

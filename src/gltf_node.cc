@@ -6,6 +6,8 @@
 
 #include <cstdlib>
 
+#define USE_MIPMAPS 1
+
 using namespace tinygltf;
 
 static std::string int_to_glfw_type(int t) {
@@ -147,12 +149,59 @@ void GltfNode::setup(tinygltf::Model& model) {
   }
 
   // Create Textures.
+  textures.resize(model.textures.size());
+  glGenTextures(textures.size(), textures.data());
+  for (int i=0; i<model.textures.size(); i++) {
+    int src = model.textures[i].source;
+    auto& img = model.images[src];
+    auto& sampler = model.samplers[model.textures[i].sampler];
+    std::cout << "  - Creating Texture " << i << ": " << model.textures[i].name << "\n";
+    std::cout << "       - source: " << src << "\n";
+    std::cout << "            + size: " << img.width << " " << img.height << "\n";
+    std::cout << "            + uri: " << img.uri << " bufferView: " << img.bufferView << "\n";
+
+    if (img.image.empty()) {
+      std::cout << " - We don't allow image buffers, it must be URI right now." << std::endl;
+      exit(1);
+    }
+
+    glActiveTexture(GL_TEXTURE0); // Note: when binding for renders this will change!
+    glBindTexture(GL_TEXTURE_2D, textures[i]);
+    //glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, sampler.minFilter);
+    //glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, sampler.magFilter);
+    //glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, sampler.wrapS);
+    //glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, sampler.wrapT);
+    //glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+    if (USE_MIPMAPS)
+      glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST_MIPMAP_LINEAR);
+    else
+      glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+
+    // I've seen a (contested) statement that glTexStorage+glTexSubImage allows optimizations over glTexImage.
+    std::cout << "image component: " << (img.component) << " type: " << int_to_glfw_type(img.pixel_type) << "\n";
+    int format   = img.component == 1 ? GL_LUMINANCE  : img.component == 3 ? GL_RGB  : img.component == 4 ? GL_RGBA  : -1;
+    int informat = img.component == 1 ? GL_LUMINANCE8 : img.component == 3 ? GL_RGB8 : img.component == 4 ? GL_RGBA8 : -1;
+    if (format == -1) { std::cerr << " - Invalid texture format." << std::endl; exit(1); }
+    int lvls = log2(std::min(img.width,img.height));
+    //glTexStorage2D(GL_TEXTURE_2D, lvls, informat, img.width, img.height);
+    //glTexSubImage2D(GL_TEXTURE_2D, 0, 0,0, img.width, img.height, format, GL_UNSIGNED_BYTE, img.image.data());
+    glTexImage2D(GL_TEXTURE_2D,  0, format, img.width, img.height, 0, format, GL_UNSIGNED_BYTE, img.image.data());
+    if (USE_MIPMAPS)
+      glGenerateMipmap(GL_TEXTURE_2D);
+    // TODO mip-map.
+  }
+  glBindTexture(GL_TEXTURE_2D, 0);
+
 }
 
 
 
 void GltfNode::render(SceneGraphTraversal& sgt) {
   std::cout << "rendering " << model.meshes.size() << " GlTF meshes.\n";
+  glColor4f(1,1,1,1);
 
   for (const auto& mesh : model.meshes) {
     for (const auto& prim : mesh.primitives) {
@@ -165,13 +214,46 @@ void GltfNode::render(SceneGraphTraversal& sgt) {
 
         if (key_accid.first == "POSITION") {
           glEnableClientState(GL_VERTEX_ARRAY);
-          // Obviously do not use '3', nor type: should get from gltf.
-          glVertexPointer(3, GL_FLOAT, bv.byteStride, (void*) (bv.byteOffset+acc.byteOffset));
-          //glVertexPointer(acc.type, acc.componentType, bv.byteStride, (void*) (bv.byteOffset+acc.byteOffset));
+          glVertexPointer(acc.type, acc.componentType, bv.byteStride, (void*) (bv.byteOffset+acc.byteOffset));
           draw_count = acc.count;
           std::cout << " - Setting vertex pointer with cnt: " << acc.count << " off: " << bv.byteOffset+acc.byteOffset
                     << " stride: " << bv.byteStride << " ctype: " << acc.componentType
                     << " type: " <<acc.type << "\n";
+        }
+
+        if (key_accid.first == "TEXCOORD_0") {
+          glEnableClientState(GL_TEXTURE_COORD_ARRAY);
+          glTexCoordPointer(acc.type, acc.componentType, bv.byteStride, (void*) (bv.byteOffset+acc.byteOffset));
+          std::cout << " - Setting texcoord pointer with cnt: " << acc.count << " off: " << bv.byteOffset+acc.byteOffset
+                    << " stride: " << bv.byteStride << " ctype: " << acc.componentType
+                    << " type: " <<acc.type << "\n";
+        }
+
+        if (key_accid.first == "NORMAL") {
+          glEnableClientState(GL_NORMAL_ARRAY);
+          glNormalPointer(acc.componentType, bv.byteStride, (void*) (bv.byteOffset+acc.byteOffset));
+          std::cout << " - Setting normal pointer with cnt: " << acc.count << " off: " << bv.byteOffset+acc.byteOffset
+                    << " stride: " << bv.byteStride << " ctype: " << acc.componentType
+                    << " type: " <<acc.type << "\n";
+        }
+
+        if (key_accid.first == "TANGENT") {
+          std::cout << " - We don't support Tangents yet.\n";
+        }
+      }
+
+      if (prim.material >= 0) {
+        auto& mat = model.materials[prim.material];
+        auto& pbr = mat.pbrMetallicRoughness;
+
+        if (pbr.baseColorTexture.index >= 0) {
+          assert(pbr.baseColorTexture.texCoord == 0);
+          auto& color_tex_id = pbr.baseColorTexture.index;
+          auto& color_tex = model.textures[color_tex_id];
+          std::cout << " - SETTING TEXTURE " << textures[color_tex_id] << "\n";
+          glEnable(GL_TEXTURE_2D);
+          glActiveTexture(MY_GL_COLOR_TEXTURE);
+          glBindTexture(GL_TEXTURE_2D, textures[color_tex_id]);
         }
       }
 
@@ -184,14 +266,23 @@ void GltfNode::render(SceneGraphTraversal& sgt) {
         glDrawElements(prim.mode, ind_acc.count, ind_acc.componentType, 0);
         glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
       } else {
-        //glDrawArrays
         std::cout << " - Drawing " << draw_count << " arrays.\n";
+        glDrawArrays(prim.mode, 0, draw_count);
       }
 
       glDisableClientState(GL_VERTEX_ARRAY);
       glDisableClientState(GL_TEXTURE_COORD_ARRAY);
       glDisableClientState(GL_NORMAL_ARRAY);
       glDisableClientState(GL_COLOR_ARRAY);
+      glDisable(GL_TEXTURE_2D);
+      glBindTexture(GL_TEXTURE_2D, 0);
     }
   }
+}
+
+GltfNode::~GltfNode() {
+  glDeleteBuffers(vbos.size(), vbos.data());
+  glDeleteTextures(textures.size(), textures.data());
+  vbos.clear();
+  textures.clear();
 }

@@ -36,7 +36,7 @@ TWindow::TWindow(int width, int height, bool headless)
     glfwTerminate();
   }
 
-  std::string title = "TerraWorld";
+  std::string title = "Tdt";
 
   // NOTE: This doesn't affect non-default FBO!!!
   if (multisample) glfwWindowHint(GLFW_SAMPLES, 4);
