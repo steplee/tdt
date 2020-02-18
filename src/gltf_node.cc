@@ -10,6 +10,15 @@
 
 using namespace tinygltf;
 
+static int filter_without_mipmap(int f) {
+  if (f == GL_NEAREST_MIPMAP_NEAREST or f == GL_NEAREST_MIPMAP_LINEAR) return GL_NEAREST;
+  if (f == GL_LINEAR_MIPMAP_NEAREST or f == GL_LINEAR_MIPMAP_LINEAR) return GL_LINEAR;
+  return f;
+}
+static bool filter_uses_mipmap(int f) {
+  return f == GL_NEAREST_MIPMAP_NEAREST or GL_LINEAR_MIPMAP_NEAREST or GL_NEAREST_MIPMAP_LINEAR or GL_LINEAR_MIPMAP_LINEAR;
+}
+
 static std::string int_to_glfw_type(int t) {
  if (t ==  (0)) return "TINYGLTF_MODE_POINTS";
  if (t ==  (1)) return "TINYGLTF_MODE_LINE";
@@ -167,18 +176,16 @@ void GltfNode::setup(tinygltf::Model& model) {
 
     glActiveTexture(GL_TEXTURE0); // Note: when binding for renders this will change!
     glBindTexture(GL_TEXTURE_2D, textures[i]);
-    //glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, sampler.minFilter);
-    //glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, sampler.magFilter);
-    //glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, sampler.wrapS);
-    //glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, sampler.wrapT);
+
+    int min_filter = sampler.minFilter == -1 ? GL_NEAREST_MIPMAP_LINEAR : sampler.minFilter;
+    int mag_filter = sampler.magFilter == -1 ? GL_LINEAR : sampler.magFilter;
+    if (not USE_MIPMAPS) min_filter = filter_without_mipmap(min_filter);
+
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, min_filter);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, mag_filter);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, sampler.wrapS);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, sampler.wrapT);
     //glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-    if (USE_MIPMAPS)
-      glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST_MIPMAP_LINEAR);
-    else
-      glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
 
     // I've seen a (contested) statement that glTexStorage+glTexSubImage allows optimizations over glTexImage.
     std::cout << "image component: " << (img.component) << " type: " << int_to_glfw_type(img.pixel_type) << "\n";
@@ -189,8 +196,7 @@ void GltfNode::setup(tinygltf::Model& model) {
     //glTexStorage2D(GL_TEXTURE_2D, lvls, informat, img.width, img.height);
     //glTexSubImage2D(GL_TEXTURE_2D, 0, 0,0, img.width, img.height, format, GL_UNSIGNED_BYTE, img.image.data());
     glTexImage2D(GL_TEXTURE_2D,  0, format, img.width, img.height, 0, format, GL_UNSIGNED_BYTE, img.image.data());
-    if (USE_MIPMAPS)
-      glGenerateMipmap(GL_TEXTURE_2D);
+    if (filter_uses_mipmap(min_filter)) glGenerateMipmap(GL_TEXTURE_2D);
     // TODO mip-map.
   }
   glBindTexture(GL_TEXTURE_2D, 0);
