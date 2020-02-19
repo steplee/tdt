@@ -42,10 +42,10 @@ CamSpec::CamSpec(Eigen::Vector2i wh, float vFov, float near, float far)
   proj = MakeInfReversedZProjRH(vFov, aspect_wh(), near, far);
 }
 
-InteractiveCamera::InteractiveCamera(CamSpec& spec) 
-  : spec(spec)
+InteractiveCamera::InteractiveCamera(CamSpec& spec)
+  : spec_(spec)
 {
-  pose = SE3::transZ(4) * SE3::rotX(M_PI);
+  pose_ = SE3::transZ(4) * SE3::rotX(M_PI);
 }
 
 
@@ -59,22 +59,22 @@ void InteractiveCamera::step() {
   mouse_acc.setZero();
 
   scroll_vel -= scroll_acc;
-  scroll_vel = scroll_vel - scroll_vel * .4;
+  scroll_vel = scroll_vel - scroll_vel * .25;
   scroll_acc.setZero();
 
   if (!left_mouse_vel.isZero(1e-3) and !just_down) {
     float speed = .01;
-    Vector3f y_plus = pose.rotationMatrix().row(0);
-    pose.so3() = pose.so3() * SO3::exp(y_plus * left_mouse_vel(1) * speed);
+    Vector3f y_plus = pose_.rotationMatrix().row(0);
+    pose_.so3() = pose_.so3() * SO3::exp(y_plus * left_mouse_vel(1) * speed);
     //Vector3f up = Vector3f::UnitZ();
     //pose.so3() = pose.so3() * SO3::exp(up * mouse_vel(0) * speed);
-    pose.so3() = pose.so3() * SO3::rotZ(left_mouse_vel(0) * speed);
+    pose_.so3() = pose_.so3() * SO3::rotZ(left_mouse_vel(0) * speed);
   }
 
   if (!scroll_vel.isZero(1e-5)) {
-    pose = pose.inverse();
-    pose.translation() = pose.translation() + pose.translation() * scroll_vel(1) * .02;
-    pose = pose.inverse();
+    pose_ = pose_.inverse();
+    pose_.translation() = pose_.translation() + pose_.translation() * scroll_vel(1) * .05;
+    pose_ = pose_.inverse();
   }
 
 }
@@ -82,11 +82,11 @@ void InteractiveCamera::step() {
 void InteractiveCamera::use() {
   glMatrixMode(GL_PROJECTION);
   glPushMatrix();
-  glLoadMatrixf(spec.P().data());
+  glLoadMatrixf(spec_.P().data());
   //if (yFlipped) glScalef(1., -1., 1.);
   glMatrixMode(GL_MODELVIEW);
   glPushMatrix();
-  glLoadMatrixf(pose.matrix().data());
+  glLoadMatrixf(pose_.matrix().data());
 }
 void InteractiveCamera::unuse() {
   glMatrixMode(GL_PROJECTION);

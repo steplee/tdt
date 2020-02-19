@@ -1,19 +1,29 @@
 #include "src/program_cache.h"
 #include <cassert>
+#include <iostream>
 #include <vector>
 //#include <spdlog/spdlog.h>
 
 namespace ProgramCache {
 
-Program& getShader(std::string name, std::string vertPath, std::string fragPath) {
+std::unordered_map<std::string, std::shared_ptr<Program>> programCache;
+
+Program::~Program() {
+  glDeleteProgram(id);
+  id = 0;
+}
+
+std::shared_ptr<Program> getShader(std::string name, std::string vertPath, std::string fragPath) {
   if (programCache.find(name) == programCache.end()) {
     //spdlog::info(" Creating shader '{}' from {} & {}.", name, vertPath, fragPath);
-    Program program;
+    auto program = std::make_shared<Program>();
 
     GLuint vertId = 0, fragId = 0;
     LoadShader(GL_VERTEX_SHADER, vertId, vertPath.c_str());
     LoadShader(GL_FRAGMENT_SHADER, fragId, fragPath.c_str());
-    LinkShader(program.id, vertId, fragId);
+    LinkShader(program->id, vertId, fragId);
+
+    getAttribs(*program);
 
     programCache[name] = program;
     return programCache[name];
@@ -24,13 +34,23 @@ Program& getShader(std::string name, std::string vertPath, std::string fragPath)
   }
 }
 
-Program& getShader(std::string name) {
+std::shared_ptr<Program> getShader(std::string name) {
   if (programCache.find(name) == programCache.end()) {
-    //spdlog::error("Tried to retrieve unknown shader-program: {}", name);
+    std::cerr << " Failed to retrieve program: " << name << std::endl;
     exit(1);
   }
   //spdlog::trace("Cache hit for shader '{}'.", name);
   return programCache[name];
+}
+
+bool getAttribs(Program& p) {
+  p.attribPos = glGetAttribLocation(p.id, "in_pos");
+  p.attribTexCoord = glGetAttribLocation(p.id, "in_uv");
+  p.attribNormal = glGetAttribLocation(p.id, "in_normal");
+
+  p.uniformMVP = glGetUniformLocation(p.id, "mvp");
+
+  return true;
 }
 
 bool LinkShader(GLuint &prog, GLuint &vertShader, GLuint &fragShader) {
@@ -67,7 +87,7 @@ bool LoadShader(GLenum shaderType, GLuint &shader, const char *shaderSourceFilen
   std::vector<GLchar> srcbuf;
   FILE *fp = fopen(shaderSourceFilename, "rb");
   if (!fp) {
-    //spdlog::error("Failed to load shader {}", shaderSourceFilename);
+    std::cerr << " Failed to open shader file: " << shaderSourceFilename << std::endl;
     exit(1);
     return false;
   }
@@ -92,6 +112,7 @@ bool LoadShader(GLenum shaderType, GLuint &shader, const char *shaderSourceFilen
     glGetShaderInfoLog(shader, 4096, &msglen, log);
     //spdlog::warn("Shader '{}' compilation failed!", shaderSourceFilename);
     //spdlog::info("Shader log: {}", log);
+    std::cerr << " Shader failed to compile: " << shaderSourceFilename << std::endl;
     exit(1);
   }
 

@@ -74,16 +74,21 @@ class Octree {
 
 struct RenderState {
   EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+
   Eigen::Matrix4f view_proj; // = proj . view
   double engineTime;
 };
 
 struct SceneGraphTraversal {
   EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+
+  SceneGraphTraversal() = delete;
+  SceneGraphTraversal(const Eigen::Matrix4f& mvp);
+
   Eigen::Matrix4f model;
+  Eigen::Matrix4f mvp;
   uint16_t depth;
 
-  inline SceneGraphTraversal() : model(Eigen::Matrix4f::Identity()), depth(0) {};
 };
 
 struct SceneNode {

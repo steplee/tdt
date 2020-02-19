@@ -73,6 +73,13 @@ void TdtSceneNode::render(SceneGraphTraversal& sgt) {
 }
 
 
+
+
+
+SceneGraphTraversal::SceneGraphTraversal(const Eigen::Matrix4f& mvp)
+  : mvp(mvp), model(Matrix4f::Identity()), depth(0)
+{ }
+
 SceneGraph::SceneGraph()
   : tree(AlignedBox<float,3> ( Vector3f{-100,-100,-100} , Vector3f{100,100,100} ))
 {
@@ -85,7 +92,7 @@ SceneGraph::SceneGraph()
 }
 
 void SceneGraph::render(const RenderState& rs) {
-  SceneGraphTraversal sgt;
+  SceneGraphTraversal sgt(rs.view_proj);
   render(rs, sgt);
 }
 void SceneGraph::render(const RenderState& rs, const SceneGraphTraversal& sgt) {

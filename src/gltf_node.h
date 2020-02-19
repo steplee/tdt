@@ -18,6 +18,7 @@
 #define MY_GL_ROUGHNESS_TEXTURE GL_TEXTURE2
 
 //namespace tinygltf { struct Model; struct Node; struct Primitive; }
+namespace ProgramCache { class Program; };
 
 
 
@@ -36,6 +37,8 @@ class GltfNode : public SceneNode {
     // numbered as Model::buffers/textures
     std::vector<GLuint> vbos;
     std::vector<GLuint> textures;
+
+    std::shared_ptr<ProgramCache::Program> program_to_use = nullptr;
 
     tinygltf::Model model;
 };

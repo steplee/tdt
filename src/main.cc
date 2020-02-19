@@ -39,6 +39,7 @@ int main() {
     renderGizmo();
 
     RenderState rs;
+    rs.view_proj = cam.spec().P() * cam.pose().matrix();
     sg.render(rs);
 
     cam.unuse();

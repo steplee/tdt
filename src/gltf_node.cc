@@ -1,6 +1,8 @@
 #define TINYGLTF_IMPLEMENTATION
 #include "gltf_node.h"
 
+#include "program_cache.h"
+
 #include <iostream>
 
 
@@ -108,6 +110,9 @@ static std::string int_to_glfw_type(int t) {
 }
 
 GltfNode::GltfNode(const std::string& path) {
+
+  program_to_use = ProgramCache::getShader("simple_textured", "../shaders/simple_textured.vert", "../shaders/simple_textured.frag");
+
   TinyGLTF loader;
   std::string err, warn;
   bool good = loader.LoadASCIIFromFile(&model, &err, &warn, path);
@@ -120,6 +125,13 @@ GltfNode::GltfNode(const std::string& path) {
     std::cerr << " - Failed to load Gltf: " << path << "\n";
     exit(1);
   }
+}
+
+GltfNode::~GltfNode() {
+  glDeleteBuffers(vbos.size(), vbos.data());
+  glDeleteTextures(textures.size(), textures.data());
+  vbos.clear();
+  textures.clear();
 }
 
 
@@ -205,6 +217,9 @@ void GltfNode::setup(tinygltf::Model& model) {
 
 
 
+/*
+ * This function is for fixed pipeline OpenGL, and I didn't even apply sgt.mvp.
+ *
 void GltfNode::render(SceneGraphTraversal& sgt) {
   std::cout << "rendering " << model.meshes.size() << " GlTF meshes.\n";
   glColor4f(1,1,1,1);
@@ -261,7 +276,7 @@ void GltfNode::render(SceneGraphTraversal& sgt) {
           glActiveTexture(MY_GL_COLOR_TEXTURE);
           glBindTexture(GL_TEXTURE_2D, textures[color_tex_id]);
         }
-      }
+      } else glUseProgram(0);
 
       if (prim.indices >= 0) {
         auto ind_acc = model.accessors[prim.indices];
@@ -285,10 +300,91 @@ void GltfNode::render(SceneGraphTraversal& sgt) {
     }
   }
 }
+*/
 
-GltfNode::~GltfNode() {
-  glDeleteBuffers(vbos.size(), vbos.data());
-  glDeleteTextures(textures.size(), textures.data());
-  vbos.clear();
-  textures.clear();
+// This impl uses an OpenGL 2.0+ shader pipeline
+void GltfNode::render(SceneGraphTraversal& sgt) {
+  std::cout << "rendering " << model.meshes.size() << " GlTF meshes.\n";
+  glColor4f(1,1,1,1);
+
+  assert(program_to_use != nullptr);
+  glUseProgram(program_to_use->id);
+
+  // Bind global uniforms.
+  auto mvp = sgt.mvp.transpose();
+  if (program_to_use->uniformMVP < 0) {
+    std::cerr << " - MVP uniform was not found!\n";
+  }
+  glUniformMatrix4fv(program_to_use->uniformMVP, 1, false, mvp.data());
+
+  for (const auto& mesh : model.meshes) {
+    for (const auto& prim : mesh.primitives) {
+      //auto bufView = acc.
+      int draw_count = 0;
+      for (const auto key_accid : prim.attributes) {
+        auto acc = model.accessors[key_accid.second];
+        auto bv = model.bufferViews[acc.bufferView];
+        glBindBuffer(GL_ARRAY_BUFFER, vbos[bv.buffer]);
+
+        int target = -2;
+
+        if (key_accid.first == "POSITION")
+          target = program_to_use->attribPos;
+        if (key_accid.first == "TEXCOORD_0")
+          target = program_to_use->attribTexCoord;
+        if (key_accid.first == "NORMAL")
+          target = program_to_use->attribNormal;
+
+        if (target == -2) {
+          std::cerr << " Unknown vertex attrib: " << key_accid.first << "\n";
+        } else if (target == -1) {
+          std::cerr << " Vertex attrib was not bound: " << key_accid.first << "\n";
+        } else {
+          glEnableVertexAttribArray(target);
+          glVertexAttribPointer(target, acc.type, acc.componentType, acc.normalized, bv.byteStride, (void*) (bv.byteOffset+acc.byteOffset));
+        }
+
+        if (key_accid.first == "TANGENT") {
+          std::cout << " - We don't support Tangents yet.\n";
+        }
+      }
+
+      if (prim.material >= 0) {
+        auto& mat = model.materials[prim.material];
+        auto& pbr = mat.pbrMetallicRoughness;
+
+
+        if (pbr.baseColorTexture.index >= 0) {
+          assert(pbr.baseColorTexture.texCoord == 0);
+          auto& color_tex_id = pbr.baseColorTexture.index;
+          auto& color_tex = model.textures[color_tex_id];
+          std::cout << " - SETTING TEXTURE " << textures[color_tex_id] << "\n";
+          glEnable(GL_TEXTURE_2D);
+          glActiveTexture(MY_GL_COLOR_TEXTURE);
+          glBindTexture(GL_TEXTURE_2D, textures[color_tex_id]);
+        }
+      }
+
+      if (prim.indices >= 0) {
+        auto ind_acc = model.accessors[prim.indices];
+        auto ind_bv = model.bufferViews[ind_acc.bufferView];
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, vbos[ind_bv.buffer]);
+        glIndexPointer(ind_acc.componentType, ind_bv.byteStride, (void*) (ind_bv.byteOffset+ind_acc.byteOffset));
+        std::cout << " - Drawing " << ind_acc.count << " indices.\n";
+        glDrawElements(prim.mode, ind_acc.count, ind_acc.componentType, 0);
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+      } else {
+        std::cout << " - Drawing " << draw_count << " arrays.\n";
+        glDrawArrays(prim.mode, 0, draw_count);
+      }
+
+      glDisableVertexAttribArray(program_to_use->attribPos);
+      glDisableVertexAttribArray(program_to_use->attribTexCoord);
+      glDisableVertexAttribArray(program_to_use->attribNormal);
+      glDisable(GL_TEXTURE_2D);
+      glBindTexture(GL_TEXTURE_2D, 0);
+    }
+  }
+
+  glUseProgram(0);
 }
