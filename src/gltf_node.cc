@@ -2,6 +2,7 @@
 #include "gltf_node.h"
 
 #include "program_cache.h"
+#include "scene_graph.h"
 
 #include <iostream>
 
@@ -109,7 +110,8 @@ static std::string int_to_glfw_type(int t) {
  return std::to_string(t);
 }
 
-GltfNode::GltfNode(const std::string& path) {
+GltfModel::GltfModel(const std::string& path)
+{
 
   program_to_use = ProgramCache::getShader("simple_textured", "../shaders/simple_textured.vert", "../shaders/simple_textured.frag");
 
@@ -127,7 +129,7 @@ GltfNode::GltfNode(const std::string& path) {
   }
 }
 
-GltfNode::~GltfNode() {
+GltfModel::~GltfModel() {
   glDeleteBuffers(vbos.size(), vbos.data());
   glDeleteTextures(textures.size(), textures.data());
   vbos.clear();
@@ -135,7 +137,7 @@ GltfNode::~GltfNode() {
 }
 
 
-void GltfNode::setup(tinygltf::Model& model) {
+void GltfModel::setup(tinygltf::Model& model) {
   // Create VBOs.
   vbos.resize(model.buffers.size());
   glGenBuffers(model.buffers.size(), vbos.data());
@@ -215,6 +217,21 @@ void GltfNode::setup(tinygltf::Model& model) {
 
 }
 
+
+
+void GltfModel::recursiveAddNodes(SceneGraph* graph, int scene, int node) {
+}
+
+
+
+GltfNode::GltfNode(std::shared_ptr<GltfModel>& model, int scene, int node,
+    Eigen::Matrix4f xform)
+  : model(model), scene(scene), node(node), transform(xform)
+{
+  type = SceneNode::NodeType::GLTF;
+}
+
+void GltfNode::setup() { }
 
 
 /*
@@ -304,36 +321,38 @@ void GltfNode::render(SceneGraphTraversal& sgt) {
 
 // This impl uses an OpenGL 2.0+ shader pipeline
 void GltfNode::render(SceneGraphTraversal& sgt) {
-  std::cout << "rendering " << model.meshes.size() << " GlTF meshes.\n";
+  auto& model_ = model->model;
+
+  std::cout << "rendering " << model_.meshes.size() << " GlTF meshes.\n";
   glColor4f(1,1,1,1);
 
-  assert(program_to_use != nullptr);
-  glUseProgram(program_to_use->id);
+  assert(model->program_to_use != nullptr);
+  glUseProgram(model->program_to_use->id);
 
   // Bind global uniforms.
   auto mvp = sgt.mvp.transpose();
-  if (program_to_use->uniformMVP < 0) {
+  if (model->program_to_use->uniformMVP < 0) {
     std::cerr << " - MVP uniform was not found!\n";
   }
-  glUniformMatrix4fv(program_to_use->uniformMVP, 1, false, mvp.data());
+  glUniformMatrix4fv(model->program_to_use->uniformMVP, 1, false, mvp.data());
 
-  for (const auto& mesh : model.meshes) {
+  for (const auto& mesh : model_.meshes) {
     for (const auto& prim : mesh.primitives) {
       //auto bufView = acc.
       int draw_count = 0;
       for (const auto key_accid : prim.attributes) {
-        auto acc = model.accessors[key_accid.second];
-        auto bv = model.bufferViews[acc.bufferView];
-        glBindBuffer(GL_ARRAY_BUFFER, vbos[bv.buffer]);
+        auto acc = model_.accessors[key_accid.second];
+        auto bv = model_.bufferViews[acc.bufferView];
+        glBindBuffer(GL_ARRAY_BUFFER, model->vbos[bv.buffer]);
 
         int target = -2;
 
         if (key_accid.first == "POSITION")
-          target = program_to_use->attribPos;
+          target = model->program_to_use->attribPos;
         if (key_accid.first == "TEXCOORD_0")
-          target = program_to_use->attribTexCoord;
+          target = model->program_to_use->attribTexCoord;
         if (key_accid.first == "NORMAL")
-          target = program_to_use->attribNormal;
+          target = model->program_to_use->attribNormal;
 
         if (target == -2) {
           std::cerr << " Unknown vertex attrib: " << key_accid.first << "\n";
@@ -350,25 +369,25 @@ void GltfNode::render(SceneGraphTraversal& sgt) {
       }
 
       if (prim.material >= 0) {
-        auto& mat = model.materials[prim.material];
+        auto& mat = model_.materials[prim.material];
         auto& pbr = mat.pbrMetallicRoughness;
 
 
         if (pbr.baseColorTexture.index >= 0) {
           assert(pbr.baseColorTexture.texCoord == 0);
           auto& color_tex_id = pbr.baseColorTexture.index;
-          auto& color_tex = model.textures[color_tex_id];
-          std::cout << " - SETTING TEXTURE " << textures[color_tex_id] << "\n";
+          auto& color_tex = model_.textures[color_tex_id];
+          std::cout << " - SETTING TEXTURE " << model->textures[color_tex_id] << "\n";
           glEnable(GL_TEXTURE_2D);
           glActiveTexture(MY_GL_COLOR_TEXTURE);
-          glBindTexture(GL_TEXTURE_2D, textures[color_tex_id]);
+          glBindTexture(GL_TEXTURE_2D, model->textures[color_tex_id]);
         }
       }
 
       if (prim.indices >= 0) {
-        auto ind_acc = model.accessors[prim.indices];
-        auto ind_bv = model.bufferViews[ind_acc.bufferView];
-        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, vbos[ind_bv.buffer]);
+        auto ind_acc = model_.accessors[prim.indices];
+        auto ind_bv = model_.bufferViews[ind_acc.bufferView];
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, model->vbos[ind_bv.buffer]);
         glIndexPointer(ind_acc.componentType, ind_bv.byteStride, (void*) (ind_bv.byteOffset+ind_acc.byteOffset));
         std::cout << " - Drawing " << ind_acc.count << " indices.\n";
         glDrawElements(prim.mode, ind_acc.count, ind_acc.componentType, 0);
@@ -378,9 +397,9 @@ void GltfNode::render(SceneGraphTraversal& sgt) {
         glDrawArrays(prim.mode, 0, draw_count);
       }
 
-      glDisableVertexAttribArray(program_to_use->attribPos);
-      glDisableVertexAttribArray(program_to_use->attribTexCoord);
-      glDisableVertexAttribArray(program_to_use->attribNormal);
+      glDisableVertexAttribArray(model->program_to_use->attribPos);
+      glDisableVertexAttribArray(model->program_to_use->attribTexCoord);
+      glDisableVertexAttribArray(model->program_to_use->attribNormal);
       glDisable(GL_TEXTURE_2D);
       glBindTexture(GL_TEXTURE_2D, 0);
     }

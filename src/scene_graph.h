@@ -85,7 +85,7 @@ struct SceneGraphTraversal {
   SceneGraphTraversal() = delete;
   SceneGraphTraversal(const Eigen::Matrix4f& mvp);
 
-  Eigen::Matrix4f model;
+  //Eigen::Matrix4f model;
   Eigen::Matrix4f mvp;
   uint16_t depth;
 
@@ -96,6 +96,10 @@ struct SceneNode {
   virtual void render(SceneGraphTraversal& sgt) {};
 
   Eigen::AlignedBox<float, 3> boundingBox;
+
+  enum NodeType {
+    REGULAR, GLTF, TDTILE
+  } type;
 };
 struct TdtSceneNode : public SceneNode {
   EIGEN_MAKE_ALIGNED_OPERATOR_NEW

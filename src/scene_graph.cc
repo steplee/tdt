@@ -77,7 +77,7 @@ void TdtSceneNode::render(SceneGraphTraversal& sgt) {
 
 
 SceneGraphTraversal::SceneGraphTraversal(const Eigen::Matrix4f& mvp)
-  : mvp(mvp), model(Matrix4f::Identity()), depth(0)
+  : mvp(mvp), depth(0)
 { }
 
 SceneGraph::SceneGraph()
@@ -87,8 +87,16 @@ SceneGraph::SceneGraph()
   auto node0 = std::make_unique<TdtSceneNode>();
   tree.add(std::move(node0));
 
-  auto node1 = std::make_unique<GltfNode>("../3rdparty/tinygltf/models/Cube/Cube.gltf");
+  /*
+  auto model = std::make_shared<GltfModel>("../3rdparty/tinygltf/models/Cube2/Cube.gltf");
+  auto node1 = std::make_unique<GltfNode>(model, 0, 0);
+  auto node2 = std::make_unique<GltfNode>(model, 0, 1);
   tree.add(std::move(node1));
+  tree.add(std::move(node2));
+  */
+  auto model = std::make_shared<GltfModel>("../3rdparty/tinygltf/models/Cube2/Cube.gltf");
+  model->recursiveAddNodes(&tree, 0, 0);
+
 }
 
 void SceneGraph::render(const RenderState& rs) {
