@@ -11,7 +11,7 @@ using namespace tinytdt;
 
 int main() {
 
-  Tileset ts("./assets/tileset.json");
+  Tileset ts("./assets/tileset2.json");
 
   ts.print(std::cout);
 

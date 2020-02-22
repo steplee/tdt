@@ -1,0 +1,14 @@
+{
+  "name": "convert_b3dm_gltf1_to_gltf2",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "gltf-pipeline": "^2.1.6"
+  }
+}
