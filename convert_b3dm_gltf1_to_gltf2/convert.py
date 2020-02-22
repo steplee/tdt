@@ -63,17 +63,24 @@ with open(args.input, 'rb') as fp:
             print(' - Corrupted Feature/Batch Table!')
             print('   Will still search for glTF and output empty tables for both!')
             featureTable = '{"BATCH_LENGTH":0}'.encode('ascii')
-            featureTableLen = len(featureTable)
+            while len(featureTable) % 4 != 0:
+                featureTable += bytes([0x20])
+            featureTableJsonLen = len(featureTable)
+            featureTableBinLen = 0
+            featureTableLen = featureTableJsonLen + featureTableBinLen
             batchTable = b''
             batchTableLen = 0
+            batchTableJsonLen = 0
+            batchTableBinLen = 0
+            batchTableLen = batchTableJsonLen + batchTableBinLen
             out_b3dm_top = \
                     b'b3dm' + \
-                    int.to_bytes(1, 4, 'little') + \
-                    int.to_bytes(0, 4, 'little') + \
-                    int.to_bytes(featureTableJsonLen, 4, 'little') + \
-                    int.to_bytes(featureTableBinLen, 4, 'little') + \
-                    int.to_bytes(batchTableJsonLen, 4, 'little') + \
-                    int.to_bytes(batchTableBinLen, 4, 'little') + \
+                    (1).to_bytes(4, 'little') + \
+                    (0).to_bytes(4, 'little') + \
+                    featureTableJsonLen.to_bytes(4, 'little') + \
+                    featureTableBinLen.to_bytes(4, 'little') + \
+                    batchTableJsonLen.to_bytes(4, 'little') + \
+                    batchTableBinLen.to_bytes(4, 'little') + \
                     featureTable + batchTable
             offset = inb.find(b'glTF')
             if offset == -1:
@@ -89,6 +96,7 @@ with open(args.input, 'rb') as fp:
         assert(False and 'only b3dm is supported right now.')
 
     glb_1_bytes = inb[offset:]
+    print('len glb1', len(glb_1_bytes))
     assert(glb_1_bytes[0:4] == b'glTF')
 
     # We now have a .glb in glTF 1.0 with the KHR_binary_gltf extension
@@ -105,14 +113,17 @@ with open(args.input, 'rb') as fp:
     # initial b3dm
     with open(args.output + '.glb', 'rb') as fp:
         out_glb_bytes = fp.read()
+        while len(out_glb_bytes) % 4 != 0:
+            out_glb_bytes += bytes([0])
 
     print(' - Deleting temp file', args.output+'.glb')
     os.unlink(args.output+'.glb')
 
     out_glb_offset = len(out_b3dm_top)
-    out_byte_len = len(out_b3dm_top) + len(out_glb_bytes)
-    out_byte_len = int.to_bytes(out_byte_len, 4, 'little')
+    out_byte_len_ = len(out_b3dm_top) + len(out_glb_bytes)
+    out_byte_len = (out_byte_len_).to_bytes(4, 'little')
     out_bytes = out_b3dm_top[0:8] + out_byte_len + out_b3dm_top[12:] + out_glb_bytes
+    assert(len(out_bytes) == out_byte_len_)
     print(' - Writing final output file:', args.output)
     print('    - b3dm magic:', out_bytes[0:4].decode('ascii'))
     print('    - b3dm v    :', int.from_bytes(out_bytes[4:8],'little'))

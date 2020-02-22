@@ -13,6 +13,37 @@
 
 using namespace tinygltf;
 
+#include <endian.h>
+#include <arpa/inet.h>
+#include <byteswap.h>
+template<class T> T view_little(const std::vector<uint8_t>& v, const size_t& byte) {
+  /*
+#if __BYTE_ORDER != __LITTLE_ENDIAN
+  if (std::is_same<std::make_unsigned<T>, std::int16_t>::value) {
+    return static_cast<T>(bswap_16(*reinterpret_cast<typename std::add_pointer<std::make_unsigned<T>>::type>(((char*)v.data())+byte)));
+  }
+  if (std::is_same<std::make_unsigned<T>, std::int32_t>::value) {
+    return static_cast<T>(bswap_32(*reinterpret_cast<typename std::add_pointer<std::make_unsigned<T>>::type>(((char*)v.data())+byte)));
+  }
+  if (std::is_same<std::make_unsigned<T>, std::int64_t>::value) {
+    return static_cast<T>(bswap_64(*reinterpret_cast<typename std::add_pointer<std::make_unsigned<T>>::type>(((char*)v.data())+byte)));
+  }
+#endif
+  return *reinterpret_cast<T*>(((char*)v.data())+byte);
+  */
+#if __BYTE_ORDER != __LITTLE_ENDIAN
+  if (std::is_same<T, std::int32_t>::value or std::is_same<T, std::uint32_t>::value) {
+    uint32_t z = *reinterpret_cast<uint32_t*> ( ((char*)v.data())+byte );
+    return bswap_32(z);
+  }
+  if (std::is_same<T, std::int16_t>::value or std::is_same<T, std::uint16_t>::value) {
+    uint16_t z = *reinterpret_cast<uint16_t*> ( ((char*)v.data())+byte );
+    return bswap_16(z);
+  }
+#endif
+  T z = *reinterpret_cast<T*> ( ((char*)v.data())+byte );
+}
+
 static int filter_without_mipmap(int f) {
   if (f == GL_NEAREST_MIPMAP_NEAREST or f == GL_NEAREST_MIPMAP_LINEAR) return GL_NEAREST;
   if (f == GL_LINEAR_MIPMAP_NEAREST or f == GL_LINEAR_MIPMAP_LINEAR) return GL_LINEAR;
@@ -23,6 +54,15 @@ static bool filter_uses_mipmap(int f) {
 }
 
 static std::string int_to_glfw_type(int t) {
+ if (t ==  (2)) return "TINYGLTF_TYPE_VEC2";
+ if (t ==  (3)) return "TINYGLTF_TYPE_VEC3";
+ if (t ==  (4)) return "TINYGLTF_TYPE_VEC4";
+ if (t ==  32+ 2) return "TINYGLTF_TYPE_MAT2";
+ if (t ==  32+ 3) return "TINYGLTF_TYPE_MAT3";
+ if (t ==  32+ 4) return "TINYGLTF_TYPE_MAT4";
+ if (t ==  64+ 1) return "TINYGLTF_TYPE_SCALAR";
+ if (t ==  64+ 4) return "TINYGLTF_TYPE_VECTOR";
+ if (t ==  64+ 16) return "TINYGLTF_TYPE_MATRIX";
  if (t ==  (0)) return "TINYGLTF_MODE_POINTS";
  if (t ==  (1)) return "TINYGLTF_MODE_LINE";
  if (t ==  (2)) return "TINYGLTF_MODE_LINE_LOOP";
@@ -78,15 +118,6 @@ static std::string int_to_glfw_type(int t) {
 
  if (t ==  (35678)) return "TINYGLTF_PARAMETER_TYPE_SAMPLER_2D";
 
- if (t ==  (2)) return "TINYGLTF_TYPE_VEC2";
- if (t ==  (3)) return "TINYGLTF_TYPE_VEC3";
- if (t ==  (4)) return "TINYGLTF_TYPE_VEC4";
- if (t ==  32+ 2) return "TINYGLTF_TYPE_MAT2";
- if (t ==  32+ 3) return "TINYGLTF_TYPE_MAT3";
- if (t ==  32+ 4) return "TINYGLTF_TYPE_MAT4";
- if (t ==  64+ 1) return "TINYGLTF_TYPE_SCALAR";
- if (t ==  64+ 4) return "TINYGLTF_TYPE_VECTOR";
- if (t ==  64+ 16) return "TINYGLTF_TYPE_MATRIX";
  if (t ==  (0)) return "TINYGLTF_IMAGE_FORMAT_JPEG";
  if (t ==  (1)) return "TINYGLTF_IMAGE_FORMAT_PNG";
  if (t ==  (2)) return "TINYGLTF_IMAGE_FORMAT_BMP";
@@ -110,19 +141,24 @@ static std::string int_to_glfw_type(int t) {
  return std::to_string(t);
 }
 
+GltfModel::GltfModel() {}
+GltfModel::GltfModel(tinygltf::Model& model) : model(model) {
+  setup();
+}
 GltfModel::GltfModel(const std::string& path)
 {
-
-  program_to_use = ProgramCache::getShader("simple_textured", "../shaders/simple_textured.vert", "../shaders/simple_textured.frag");
-
   TinyGLTF loader;
   std::string err, warn;
-  bool good = loader.LoadASCIIFromFile(&model, &err, &warn, path);
+  bool good = false;
+  if (path.find("glb") == std::string::npos)
+    good = loader.LoadASCIIFromFile(&model, &err, &warn, path);
+  else
+    good = loader.LoadBinaryFromFile(&model, &err, &warn, path);
   if (err.length()) std::cout << " - GltfNode load err : " << err << "\n";
   if (warn.length()) std::cout << " - GltfNode load warn: " << warn << "\n";
 
   if (good) {
-    setup(model);
+    setup();
   } else {
     std::cerr << " - Failed to load Gltf: " << path << "\n";
     exit(1);
@@ -130,14 +166,18 @@ GltfModel::GltfModel(const std::string& path)
 }
 
 GltfModel::~GltfModel() {
-  glDeleteBuffers(vbos.size(), vbos.data());
-  glDeleteTextures(textures.size(), textures.data());
-  vbos.clear();
-  textures.clear();
+  // TODO: make it move only so this is valid.
+  //glDeleteBuffers(vbos.size(), vbos.data());
+  //glDeleteTextures(textures.size(), textures.data());
+  //vbos.clear();
+  //textures.clear();
 }
 
 
-void GltfModel::setup(tinygltf::Model& model) {
+void GltfModel::setup(/*tinygltf::Model& model*/) {
+  program_to_use = ProgramCache::getShader("simple_textured", "./shaders/simple_textured.vert", "./shaders/simple_textured.frag");
+  //program_to_use = ProgramCache::getShader("simplest", "./shaders/simplest.vert", "./shaders/simplest.frag");
+
   // Create VBOs.
   vbos.resize(model.buffers.size());
   glGenBuffers(model.buffers.size(), vbos.data());
@@ -148,18 +188,23 @@ void GltfModel::setup(tinygltf::Model& model) {
     glBindBuffer(GL_ARRAY_BUFFER, vbos[i]);
     glBufferData(GL_ARRAY_BUFFER, model.buffers[i].data.size(), model.buffers[i].data.data(),
         GL_STATIC_DRAW);
-    model.buffers[i].data.clear();
+    //model.buffers[i].data.clear();
   }
   glBindBuffer(GL_ARRAY_BUFFER, 0);
 
   // BufferViews.
+  //vbos.resize(model.bufferViews.size());
+  //glGenBuffers(model.bufferViews.size(), vbos.data());
   for (int i=0; i<model.bufferViews.size(); i++) {
     std::cout << "  - BufferView " << i << ": " << model.bufferViews[i].name << "\n";
     std::cout << "       - parent: " << model.bufferViews[i].buffer << "\n";
     std::cout << "       - offset: " << model.bufferViews[i].byteOffset << "\n";
     std::cout << "       - length: " << model.bufferViews[i].byteLength << "\n";
     std::cout << "       - stride: " << model.bufferViews[i].byteStride << "\n";
-    std::cout << "       - target: " << int_to_glfw_type(model.bufferViews[i].target) << "\n";
+    std::cout << std::hex;
+    std::cout << "       - target: " << (model.bufferViews[i].target) << "\n";
+    std::cout << std::dec;
+    std::cout << "       - sample:\n";
   }
   // Accessors.
   for (int i=0; i<model.accessors.size(); i++) {
@@ -167,8 +212,21 @@ void GltfModel::setup(tinygltf::Model& model) {
     std::cout << "       - parent  : " << model.accessors[i].bufferView << "\n";
     std::cout << "       - count   : " << model.accessors[i].count << "\n";
     std::cout << "       - offset  : " << model.accessors[i].byteOffset << "\n";
-    std::cout << "       - compType: " << int_to_glfw_type(model.accessors[i].componentType) << "\n";
-    std::cout << "       - type    : " << int_to_glfw_type(model.accessors[i].type) << "\n";
+    std::cout << std::hex;
+    std::cout << "       - compType: " << (model.accessors[i].componentType) << "\n";
+    std::cout << "       - type    : " << (model.accessors[i].type) << "\n";
+    std::cout << std::dec;
+    std::cout << "       - looks like:\n";
+    for (int j=0; j<4; j++) {
+      std::cout << "            - ";
+      int len=0;
+      for (int l=0; l<len; l++) {
+        //if (model.accessors[i].componentType < 0x1400) 
+          //std::cout << view_little<uint8_t>(
+      }
+      std::cout << "\n";
+
+    }
   }
 
   // Create Textures.
@@ -215,6 +273,17 @@ void GltfModel::setup(tinygltf::Model& model) {
   }
   glBindTexture(GL_TEXTURE_2D, 0);
 
+  //exit(0);
+
+  /*
+  std::cout << "some floats.\n";
+  for (int i=0; i<model.buffers[0].data.size(); i++) {
+    std::cout << view_little<float>(model.buffers[0].data, i*4);
+    if (i % 10 == 0) std::cout << "\n";
+  }
+  */
+  //exit(0);
+
 }
 
 
@@ -222,6 +291,7 @@ Eigen::Matrix4f GltfModel::get_node_xform(int node_id) {
   assert(node_id < model.nodes.size());
   auto& node = model.nodes[node_id];
   Eigen::Matrix4f out(Eigen::Matrix4f::Identity());
+  return out;
 
   if (node.matrix.size()) {
     for (int i=0; i<16; i++) out(i) = node.matrix[i];
@@ -237,6 +307,7 @@ Eigen::Matrix4f GltfModel::get_node_xform(int node_id) {
         Eigen::Vector3f { node.translation[0] , node.translation[1] , node.translation[2] };
     }
   }
+
 
   std::cout << "Node " << node_id << " xform:\n" << out << "\n";
 
@@ -268,14 +339,20 @@ void GltfModel::renderNode(const SceneGraphTraversal& sgt, int node) {
   glUniformMatrix4fv(program_to_use->uniformMVP, 1, false, new_mvp.data());
 
   if (model.nodes[node].mesh >= 0) {
-    auto mesh = model.meshes[model.nodes[node].mesh];
+    auto &mesh = model.meshes[model.nodes[node].mesh];
     for (const auto& prim : mesh.primitives) {
       //auto bufView = acc.
       int draw_count = 0;
       for (const auto key_accid : prim.attributes) {
-        auto acc = model.accessors[key_accid.second];
-        auto bv = model.bufferViews[acc.bufferView];
-        glBindBuffer(GL_ARRAY_BUFFER, vbos[bv.buffer]);
+        auto &acc = model.accessors[key_accid.second];
+        auto &bv = model.bufferViews[acc.bufferView];
+
+        int size = 1;
+        if (acc.type == TINYGLTF_TYPE_SCALAR) size = 1;
+        else if (acc.type == TINYGLTF_TYPE_VEC2) size = 2;
+        else if (acc.type == TINYGLTF_TYPE_VEC3) size = 3;
+        else if (acc.type == TINYGLTF_TYPE_VEC4) size = 4;
+        else assert(0);
 
         int target = -2;
 
@@ -286,13 +363,19 @@ void GltfModel::renderNode(const SceneGraphTraversal& sgt, int node) {
         if (key_accid.first == "NORMAL")
           target = program_to_use->attribNormal;
 
+        std::cerr << "  vertex attrib: " << key_accid.first <<  " : " << target << "\n";
         if (target == -2) {
           std::cerr << " Unknown vertex attrib: " << key_accid.first << "\n";
         } else if (target == -1) {
           std::cerr << " Vertex attrib was not bound: " << key_accid.first << "\n";
         } else {
+          //auto stride = model.accessors[key_accid.second].ByteStride(bv);
+          auto stride = bv.byteStride;
+          //glBindBuffer(GL_ARRAY_BUFFER, acc.bufferView);
+          //glVertexAttribPointer(target, size, acc.componentType, acc.normalized, stride, (void*) (acc.byteOffset));
+          glBindBuffer(GL_ARRAY_BUFFER, vbos[bv.buffer]);
+          glVertexAttribPointer(target, size, acc.componentType, acc.normalized, stride, (void*) (bv.byteOffset+acc.byteOffset));
           glEnableVertexAttribArray(target);
-          glVertexAttribPointer(target, acc.type, acc.componentType, acc.normalized, bv.byteStride, (void*) (bv.byteOffset+acc.byteOffset));
         }
 
         if (key_accid.first == "TANGENT") {
@@ -316,13 +399,17 @@ void GltfModel::renderNode(const SceneGraphTraversal& sgt, int node) {
         }
       }
 
+      glDisable(GL_TEXTURE_2D);
+
       if (prim.indices >= 0) {
-        auto ind_acc = model.accessors[prim.indices];
-        auto ind_bv = model.bufferViews[ind_acc.bufferView];
+        auto &ind_acc = model.accessors[prim.indices];
+        auto &ind_bv = model.bufferViews[ind_acc.bufferView];
+        //glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ind_acc.bufferView);
+        //glIndexPointer(ind_acc.componentType, ind_bv.byteStride, (void*) (ind_acc.byteOffset));
         glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, vbos[ind_bv.buffer]);
-        glIndexPointer(ind_acc.componentType, ind_bv.byteStride, (void*) (ind_bv.byteOffset+ind_acc.byteOffset));
-        std::cout << " - Drawing " << ind_acc.count << " indices.\n";
-        glDrawElements(prim.mode, ind_acc.count, ind_acc.componentType, 0);
+        std::cout << " - Drawing " << ind_acc.count << " indices of type " << ind_acc.componentType << " in mode " << prim.mode << "\n";
+        //glDrawElements(prim.mode, ind_acc.count, ind_acc.componentType, 0);
+        glDrawElements(prim.mode, ind_acc.count, ind_acc.componentType, (void*) (ind_bv.byteOffset+ind_acc.byteOffset));
         glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
       } else {
         std::cout << " - Drawing " << draw_count << " arrays.\n";

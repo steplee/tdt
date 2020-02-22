@@ -20,6 +20,7 @@ add_executable(tdt_main
   src/camera.cc
 
   src/gltf_node.cc
+  src/tdt_node.cc
   )
 
 set(ALL_LIBS

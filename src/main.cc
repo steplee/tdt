@@ -5,6 +5,7 @@
 
 #include "scene_graph.h"
 #include "gltf_node.h"
+#include "tdt_node.h"
 
 static void renderGizmo() {
   glLineWidth(4.);
@@ -25,11 +26,25 @@ int main() {
 
   TWindow window(800,800, true);
 
-  CamSpec spec({800,800}, M_PI/4.);
+  CamSpec spec({800,800}, M_PI/4., .001, 100000);
   InteractiveCamera cam(spec);
 
+  glDisable(GL_CULL_FACE);
+
   //SceneGraph sg;
-  GltfModel model0("../3rdparty/tinygltf/models/Cube/Cube.gltf");
+  //GltfModel model0("./3rdparty/tinygltf/models/Cube/Cube.gltf");
+  GltfModel model0("./3rdparty/tinygltf/models/Cube/Cube.gltf");
+  std::cout<<"BOXTEXTURED.\n\n";
+  //GltfModel model1("../glTF-Sample-Models/2.0/BoxTextured/glTF/BoxTextured.gltf");
+  GltfModel model1("./convert_b3dm_gltf1_to_gltf2/low1.glb");
+
+  tinygltf::TinyGLTF tinygltfCtx;
+
+  //tinytdt::Tileset tset("./assets/tileset2.json");
+  //tinytdt::TileSpec &tspec = tset.root;
+  //TdtNode tdt(tinygltfCtx, tspec);
+
+
 
   glEnable(GL_DEPTH_TEST);
 
@@ -50,7 +65,9 @@ int main() {
     //rs.view_proj = cam.spec().P() * cam.pose().matrix();
     //sg.render(rs);
     SceneGraphTraversal sgt ( cam.spec().P() * cam.pose().matrix() , 0 );
-    model0.renderScene(sgt, 0);
+    model1.renderScene(sgt, 0);
+
+    //tdt.render(sgt);
 
     cam.unuse();
 

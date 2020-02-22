@@ -58,10 +58,13 @@ class MultiGltfContainer {
  *
  */
 struct GltfModel {
+    EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+    GltfModel();
     GltfModel(const std::string& path);
+    GltfModel(tinygltf::Model& model);
     ~GltfModel();
 
-    void setup(tinygltf::Model& model);
+    void setup(/*tinygltf::Model& model*/);
 
     tinygltf::Model model;
 

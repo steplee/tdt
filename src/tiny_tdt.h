@@ -98,7 +98,7 @@ struct TileModelI3DM {
 
 struct TileModelB3DM {
   // Construct after loading file.
-  TileModelB3DM(tinygltf::TinyGLTF*, const std::string& url);
+  TileModelB3DM(const std::string& url);
 
   struct {
     uint32_t version, byteLength,
@@ -110,8 +110,11 @@ struct TileModelB3DM {
 
   FeatureTable featureTable;
   BatchTable batchTable;
+  uint32_t gltfByteLength;
 
-  tinygltf::Model model;
+  std::vector<unsigned char> data; // This will be cleared after first call of make_model()!
+  size_t offset;
+  bool make_model(tinygltf::TinyGLTF&, tinygltf::Model* model);
 
   void print(std::ostream& os, int depth=0) const;
 };
@@ -152,6 +155,11 @@ template<class T> T view_little(const std::vector<uint8_t>& v, const size_t& byt
   }
 #endif
   T z = *reinterpret_cast<T*> ( ((char*)v.data())+byte );
+}
+
+inline std::ostream& tab_it(std::ostream& os, int d) {
+  while (d--) os << '\t';
+  return os;
 }
 
 /*
@@ -291,8 +299,7 @@ TileSpec::TileSpec(const json& jobj) {
       content.url = content_jobj["url"];
 
       // TODO should lazy-load on seperate thread.
-      tinygltf::TinyGLTF tiny_gltf;
-      content.model = std::make_unique<TileModelB3DM>(&tiny_gltf, content.url);
+      content.model = std::make_unique<TileModelB3DM>(content.url);
     }
     else {
       std::cerr << "No tile content url specified!\n";
@@ -307,10 +314,10 @@ TileSpec::TileSpec(const json& jobj) {
 }
 
 
-TileModelB3DM::TileModelB3DM(tinygltf::TinyGLTF *tinygltf, const std::string& url) {
+TileModelB3DM::TileModelB3DM(const std::string& url) {
   std::stringstream ss;
 
-  std::vector<unsigned char> data;
+  //std::vector<unsigned char> data;
   std::string fileerr;
   bool fileread = ReadWholeFile(&data, &fileerr, url, nullptr);
   assert(fileread);
@@ -334,7 +341,7 @@ TileModelB3DM::TileModelB3DM(tinygltf::TinyGLTF *tinygltf, const std::string& ur
   std::cout << "header byte size: " << header.byteLength << std::endl;
   assert(data.size() == header.byteLength);
 
-  size_t offset = 28;
+  offset = 28;
 
   // Parse feature table.
   std::cout << "load feature table, sizes " << header.featureTableJsonByteLength << " " <<  header.featureTableBinaryByteLength << std::endl;
@@ -356,22 +363,35 @@ TileModelB3DM::TileModelB3DM(tinygltf::TinyGLTF *tinygltf, const std::string& ur
   std::cout << view_little<char>(data, offset+2) << " ";
   std::cout << view_little<char>(data, offset+3) << "\n";
   uint32_t gltf_version = view_little<uint32_t>(data, offset+4);
-  uint32_t gltf_len = view_little<uint32_t>(data, offset+8);
+  gltfByteLength = view_little<uint32_t>(data, offset+8);
   uint32_t gltf_model_len = view_little<uint32_t>(data, offset+12);
   uint32_t gltf_model_format = view_little<uint32_t>(data, offset+16);
   std::cout << "gltf stuff:\n";
-  std::cout << "  len " << gltf_len << "\n";
+  std::cout << "  len " << gltfByteLength << "\n";
   std::cout << "  model_len " << gltf_model_len << "\n";
   std::cout << "  format " << gltf_model_format << "\n";
-  assert(gltf_len+offset == data.size());
+
+  assert(gltfByteLength+offset == data.size());
+
+  // Done.
+}
+
+bool TileModelB3DM::make_model(tinygltf::TinyGLTF &tinygltf, tinygltf::Model* model) {
   std::string err, warn;
-  bool good = tinygltf->LoadBinaryFromMemory(&model, &err, &warn, gltf_str, gltf_len);
+
+  unsigned char* gltf_str = ((unsigned char*) data.data()) + offset;
+  uint32_t gltf_len = view_little<uint32_t>(data, offset+8);
+
+  bool good = tinygltf.LoadBinaryFromMemory(model, &err, &warn, gltf_str, gltf_len);
   if (not good) {
     std::cout << "Error loading gltf!\n - warn: " << warn << "\n - err: " << err << std::endl;
     assert(false);
+    return false;
   }
 
-  // Done.
+  data.clear(); // free memory.
+
+  return true;
 }
 
 #if 0
@@ -437,10 +457,6 @@ bool BatchTable::load(const char* buf, uint32_t jsonLength, uint32_t binaryLengt
   return true;
 }
 
-static inline std::ostream& tab_it(std::ostream& os, int d) {
-  while (d--) os << '\t';
-  return os;
-}
 
 
 void Tileset::print(std::ostream& os, int depth) const {
@@ -475,6 +491,9 @@ void TileSpec::print(std::ostream& os, int depth) const {
 }
 void TileModelB3DM::print(std::ostream& os, int depth) const {
   tab_it(os, depth) << "- B3DM Tile Model:" << "\n";
+  tab_it(os, depth) << "-   byteLength     : " << header.byteLength  << "\n";
+  tab_it(os, depth) << "-   glTF byteLength: " << gltfByteLength  << "\n";
+  /*
   tab_it(os, depth) << "-   asset version: " << model.asset.version << "\n";
   tab_it(os, depth) << "-   asset gen    : " << model.asset.generator << "\n";
   tab_it(os, depth) << "-   n_scenes  : " << model.scenes.size() << "\n";
@@ -482,6 +501,7 @@ void TileModelB3DM::print(std::ostream& os, int depth) const {
   tab_it(os, depth) << "-   n_nodes   : " << model.nodes.size()  << "\n";
   tab_it(os, depth) << "-   n_buffers : " << model.buffers.size()  << "\n";
   tab_it(os, depth) << "-   n_bufferViews : " << model.bufferViews.size()  << "\n";
+  */
 }
 
 

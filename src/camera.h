@@ -20,7 +20,7 @@ struct CamSpec {
   inline const Eigen::Matrix4f& P() const { return proj; }
 
   // Perspective
-  CamSpec(Eigen::Vector2i wh, float vFov, float near=.1, float far=100);
+  CamSpec(Eigen::Vector2i wh, float vFov, float near=.1, float far=800);
   // Ortho (todo)
   //CamSpec(Eigen::Vector2i wh, float vFov);
 
