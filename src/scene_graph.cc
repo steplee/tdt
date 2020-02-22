@@ -2,6 +2,9 @@
 #include <iostream>
 #include "gltf_node.h"
 
+#define TINY_TDT_IMPLEMENTATION
+#include "tiny_tdt.h"
+
 using namespace Eigen;
 
 SceneGraphTraversal::SceneGraphTraversal(const Eigen::Matrix4f& mvp, uint16_t depth)
