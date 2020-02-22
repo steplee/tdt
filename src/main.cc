@@ -2,7 +2,9 @@
 
 #include "twindow.h"
 #include "camera.h"
+
 #include "scene_graph.h"
+#include "gltf_node.h"
 
 static void renderGizmo() {
   glLineWidth(4.);
@@ -26,7 +28,8 @@ int main() {
   CamSpec spec({800,800}, M_PI/4.);
   InteractiveCamera cam(spec);
 
-  SceneGraph sg;
+  //SceneGraph sg;
+  GltfModel model0("../3rdparty/tinygltf/models/Cube/Cube.gltf");
 
   glEnable(GL_DEPTH_TEST);
 
@@ -38,9 +41,16 @@ int main() {
 
     renderGizmo();
 
-    RenderState rs;
-    rs.view_proj = cam.spec().P() * cam.pose().matrix();
-    sg.render(rs);
+    std::cout << " cam at: " << cam.pose().inverse().translation().transpose() << "\n";
+    std::cout << " cam x+: " << cam.pose().inverse().rotationMatrix().row(0) << "\n";
+    std::cout << " cam y+: " << cam.pose().inverse().rotationMatrix().row(1) << "\n";
+    std::cout << " cam z+: " << cam.pose().inverse().rotationMatrix().row(2) << "\n";
+
+    //RenderState rs;
+    //rs.view_proj = cam.spec().P() * cam.pose().matrix();
+    //sg.render(rs);
+    SceneGraphTraversal sgt ( cam.spec().P() * cam.pose().matrix() , 0 );
+    model0.renderScene(sgt, 0);
 
     cam.unuse();
 

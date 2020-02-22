@@ -22,7 +22,7 @@ static Eigen::Matrix4f MakeInfReversedZProjRH(float fovY_radians, float aspectWb
   float bottom = -ymax;
   float top = ymax;
 
-  out(0,0) = -2 * znear / (right-left);
+  out(0,0) = 2 * znear / (right-left);
 
   out(1,1) = 2 * znear / (top-bottom);
 

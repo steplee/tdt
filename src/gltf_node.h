@@ -39,6 +39,14 @@ class MultiGltfContainer {
 };
 
 /*
+ * Update:
+ * I will change to start this as simple as possible.
+ * Externally, you will render a scene at a time.
+ * Internally, it will recursively visit all nodes and compose
+ * all transformations each render call.
+ */
+
+/*
  * TODO
  * Right now when parsing the gltf, we create all buffers and textures.
  * We should do lazy-loading on accessing e.g. vbos[1], by having a dependency graph for nodes.
@@ -65,45 +73,15 @@ struct GltfModel {
 
     Eigen::Matrix4f transform;
 
-    void recursiveAddNodes(SceneGraph* graph, int scene, int node);
+    Eigen::Matrix4f get_node_xform(int node);
 
-    friend GltfNode;
-};
+    //void recursiveAddNodes(SceneGraph* graph, int scene, int node);
 
-
-/*
- * NOTE
- * A GltfNode has no knowledge of its parents or children. The SceneGraph becomes the manager of such relations.
- * So when we load a model, we reorganize the glTF node hierarchy to our own SceneGraph hierarchy,
- * composing node transformations as needed.
- *
- * Now this conversion is actually ill-formed: glTF obviously does not require children to be contained within
- * parents' spatial extent. The important question is whether the 3dTile spec *does*?
- * I will deal with that, if needed, when I get to it.
- *
- */
-class GltfNode : public SceneNode {
-  public:
-    EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+    void renderScene(const SceneGraphTraversal& sgt, int scene);
 
   private:
-    // NOTE: Private constructor: we can only create through GltfModel::recursiveAddNodes()
-    GltfNode(std::shared_ptr<GltfModel>& model, int scene, int node,
-        Eigen::Matrix4f prefixTransformation=Eigen::Matrix4f::Identity());
+    void renderNode(const SceneGraphTraversal& sgt, int node);
 
-  public:
-
-    virtual void render(SceneGraphTraversal& sgt) override;
-
-  private:
-    void setup();
-
-    std::shared_ptr<GltfModel> model;
-    int scene, node;
-
-    Eigen::Matrix4f transform;
-
-    // We could specify this, not really needed though.
-    //std::shared_ptr<ProgramCache::Program> program_to_use = nullptr;
-
+    //friend GltfNode;
 };
+

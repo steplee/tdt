@@ -4,6 +4,14 @@
 
 using namespace Eigen;
 
+SceneGraphTraversal::SceneGraphTraversal(const Eigen::Matrix4f& mvp, uint16_t depth)
+  : mvp(mvp), depth(depth)
+{ }
+
+
+
+#if 0
+
 static void test_quadrant_of() {
   AlignedBox<float,3> box { Vector3f{0,0,0} , Vector3f{2,2,2} };
   std::cout << " - original: " << box.min().transpose() << " => " << box.max().transpose() << "\n";
@@ -76,9 +84,6 @@ void TdtSceneNode::render(SceneGraphTraversal& sgt) {
 
 
 
-SceneGraphTraversal::SceneGraphTraversal(const Eigen::Matrix4f& mvp)
-  : mvp(mvp), depth(0)
-{ }
 
 SceneGraph::SceneGraph()
   : tree(AlignedBox<float,3> ( Vector3f{-100,-100,-100} , Vector3f{100,100,100} ))
@@ -94,13 +99,13 @@ SceneGraph::SceneGraph()
   tree.add(std::move(node1));
   tree.add(std::move(node2));
   */
-  auto model = std::make_shared<GltfModel>("../3rdparty/tinygltf/models/Cube2/Cube.gltf");
-  model->recursiveAddNodes(&tree, 0, 0);
+  auto model = std::make_shared<GltfModel>("../3rdparty/tinygltf/models/Cube/Cube.gltf");
+  //model->recursiveAddNodes(&tree, 0, 0);
 
 }
 
 void SceneGraph::render(const RenderState& rs) {
-  SceneGraphTraversal sgt(rs.view_proj);
+  SceneGraphTraversal sgt(rs.view_proj, 0);
   render(rs, sgt);
 }
 void SceneGraph::render(const RenderState& rs, const SceneGraphTraversal& sgt) {
@@ -111,3 +116,4 @@ void SceneGraph::render(const RenderState& rs, const SceneGraphTraversal& sgt) {
   };
   tree.traverse<decltype(func),SceneGraphTraversal>(func, sgt);
 }
+#endif

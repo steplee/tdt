@@ -3,6 +3,20 @@
 #include <Eigen/Geometry>
 #include <memory>
 
+struct SceneGraphTraversal {
+  EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+
+  SceneGraphTraversal() = delete;
+  SceneGraphTraversal(const Eigen::Matrix4f& mvp, uint16_t depth);
+
+  //Eigen::Matrix4f model;
+  Eigen::Matrix4f mvp;
+  uint16_t depth;
+
+};
+
+
+#if 0
 
 /*
  *
@@ -79,17 +93,6 @@ struct RenderState {
   double engineTime;
 };
 
-struct SceneGraphTraversal {
-  EIGEN_MAKE_ALIGNED_OPERATOR_NEW
-
-  SceneGraphTraversal() = delete;
-  SceneGraphTraversal(const Eigen::Matrix4f& mvp);
-
-  //Eigen::Matrix4f model;
-  Eigen::Matrix4f mvp;
-  uint16_t depth;
-
-};
 
 struct SceneNode {
   EIGEN_MAKE_ALIGNED_OPERATOR_NEW
@@ -122,3 +125,4 @@ class SceneGraph {
     Octree<SceneNodeUPtr> tree;
 
 };
+#endif
