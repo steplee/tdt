@@ -66,9 +66,11 @@ void InteractiveCamera::step() {
     float speed = .01;
     Vector3f y_plus = pose_.rotationMatrix().row(0);
     pose_.so3() = pose_.so3() * SO3::exp(y_plus * left_mouse_vel(1) * speed);
-    //Vector3f up = Vector3f::UnitZ();
-    //pose.so3() = pose.so3() * SO3::exp(up * mouse_vel(0) * speed);
+    /*
     pose_.so3() = pose_.so3() * SO3::rotZ(left_mouse_vel(0) * speed);
+    */
+    Vector3f up = pose_.rotationMatrix().row(1);
+    pose_.so3() = pose_.so3() * SO3::exp(up * left_mouse_vel(0) * speed);
   }
 
   if (!scroll_vel.isZero(1e-5)) {

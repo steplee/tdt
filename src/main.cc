@@ -36,7 +36,8 @@ int main() {
   GltfModel model0("./3rdparty/tinygltf/models/Cube/Cube.gltf");
   std::cout<<"BOXTEXTURED.\n\n";
   //GltfModel model1("../glTF-Sample-Models/2.0/BoxTextured/glTF/BoxTextured.gltf");
-  GltfModel model1("./convert_b3dm_gltf1_to_gltf2/low1.glb");
+  //GltfModel model1("./convert_b3dm_gltf1_to_gltf2/low1.glb");
+  GltfModel model1("./convert_b3dm_gltf1_to_gltf2/v13.glb");
 
   tinygltf::TinyGLTF tinygltfCtx;
 
