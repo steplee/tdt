@@ -37,13 +37,14 @@ int main() {
   std::cout<<"BOXTEXTURED.\n\n";
   //GltfModel model1("../glTF-Sample-Models/2.0/BoxTextured/glTF/BoxTextured.gltf");
   //GltfModel model1("./convert_b3dm_gltf1_to_gltf2/low1.glb");
-  GltfModel model1("./convert_b3dm_gltf1_to_gltf2/v13.glb");
+  //GltfModel model1("./convert_b3dm_gltf1_to_gltf2/v13.glb");
+  //GltfModel model1("./convert_b3dm_gltf1_to_gltf2/v13.glb");
 
   tinygltf::TinyGLTF tinygltfCtx;
 
-  //tinytdt::Tileset tset("./assets/tileset2.json");
-  //tinytdt::TileSpec &tspec = tset.root;
-  //TdtNode tdt(tinygltfCtx, tspec);
+  tinytdt::Tileset tset("./assets/tileset2.json");
+  tinytdt::TileSpec &tspec = tset.root;
+  TdtNode tdt(tinygltfCtx, tspec);
 
 
 
@@ -66,9 +67,9 @@ int main() {
     //rs.view_proj = cam.spec().P() * cam.pose().matrix();
     //sg.render(rs);
     SceneGraphTraversal sgt ( cam.spec().P() * cam.pose().matrix() , 0 );
-    model1.renderScene(sgt, 0);
+    //model1.renderScene(sgt, 0);
 
-    //tdt.render(sgt);
+    tdt.render(sgt);
 
     cam.unuse();
 
