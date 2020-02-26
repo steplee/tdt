@@ -21,6 +21,7 @@ add_executable(tdt_main
 
   src/gltf_node.cc
   src/tdt_node.cc
+  src/parse_khr_techniques_webgl.cc
   )
 
 set(ALL_LIBS
