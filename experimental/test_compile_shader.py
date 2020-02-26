@@ -1,5 +1,13 @@
+from OpenGL.GL import *
+from OpenGL.GLUT import *
 
-# I had to add the uniform czm_sunDirectionEC, add the '#version 130' specs.
+# Wanted to make sure I could compile KHR_techniques_webgl shaders without error.
+# I got these shaders from some b3dm's I had.
+# I needed to add a '#version 130' (Which corresponds to WebGL 1.0, which the extension
+# targets)
+# NOTE: It appears cesium shaders assume access to global uniforms, in this case
+#       there was one called 'czm_sunDirectionEC'
+
 fsrc = '''
 #version 130
 precision mediump float;
@@ -54,8 +62,6 @@ void main(void) {
 }
 '''
 
-from OpenGL.GL import *
-from OpenGL.GLUT import *
 
 glutInit()
 glutCreateWindow('test')
@@ -79,4 +85,4 @@ precision highp float;attribute vec3 a_position;attribute vec2 a_texcoord0;attri
 '''
 vs = OpenGL.GL.shaders.compileShader(vsrc, GL_VERTEX_SHADER)
 fs = OpenGL.GL.shaders.compileShader(fsrc, GL_FRAGMENT_SHADER)
-print('Vricon tile shader:', OpenGL.GL.shaders.compileProgram(vs, fs))
+print('3d tile shader:', OpenGL.GL.shaders.compileProgram(vs, fs))
