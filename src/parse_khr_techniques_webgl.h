@@ -17,6 +17,18 @@
  *
  * The tricky part will be if a shader/program does not have a name, but is the exact same as another.
  * In that case, I could try hashing the source code and using that as a name.
+ *
+ *
+ *
+ *
+ * TODO Support some common cesium 'automatic uniforms':
+ * https://github.com/CesiumGS/cesium/blob/b20/Source/Renderer/ShaderProgram.js
+ * Also note that:
+ *        ... Uniforms are program object-specific state. They retain their values once loaded,
+ *            and their values are restored whenever a program object is used,
+ *            as long as the program object has not been re-linked. ...
+ * So if no object ever changes a uniform, we need only set it once.
+ *
  */
 
 // TODO.
