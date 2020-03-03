@@ -183,13 +183,15 @@ class KhrTechniquesWebgl:
             fs = self.shaders[prog['fragmentShader']]
             if fs is None:
                 name, src, type = self.cpuShaders[prog['fragmentShader']]
-                fs = self.shaders[prog['fragmentShader']] = OpenGL.GL.shaders.compileShader(src, type)
+                #fs = self.shaders[prog['fragmentShader']] = OpenGL.GL.shaders.compileShader(src, type)
+                fs = src
             vs = self.shaders[prog['vertexShader']]
             if vs is None:
                 name, src, type = self.cpuShaders[prog['vertexShader']]
-                vs = self.shaders[prog['vertexShader']] = OpenGL.GL.shaders.compileShader(src, type)
-            gl_program = OpenGL.GL.shaders.compileProgram(vs, fs)
-            self.programs[prog['name']] = Shader(prog=gl_program)
+                #vs = self.shaders[prog['vertexShader']] = OpenGL.GL.shaders.compileShader(src, type)
+                vs = src
+            #gl_program = OpenGL.GL.shaders.compileProgram(vs, fs)
+            self.programs[prog['name']] = Shader(vs,fs)
 
 
         return self.programs
@@ -199,13 +201,10 @@ class KhrTechniquesWebgl:
 
 
 class Shader:
-    def __init__(self, vsrc=None, fsrc=None, prog=None):
-        if prog is not None:
-            self.prog = prog
-        else:
-            vs = OpenGL.GL.shaders.compileShader(vsrc, GL_VERTEX_SHADER)
-            fs = OpenGL.GL.shaders.compileShader(fsrc, GL_FRAGMENT_SHADER)
-            self.prog = OpenGL.GL.shaders.compileProgram(vs, fs)
+    def __init__(self, vsrc=None, fsrc=None):
+        self.vs = OpenGL.GL.shaders.compileShader(vsrc, GL_VERTEX_SHADER)
+        self.fs = OpenGL.GL.shaders.compileShader(fsrc, GL_FRAGMENT_SHADER)
+        self.prog = OpenGL.GL.shaders.compileProgram(self.vs, self.fs)
         assert(self.prog > 0)
 
         # Find attributes and uniforms.
@@ -271,6 +270,13 @@ class Shader:
     def unuse(self):
         for ai in self.allAttribs.values(): glDisableVertexAttribArray(ai)
         glUseProgram(0)
+
+    def __del__(self):
+        if self.prog:
+            glDeleteShader(self.fs)
+            glDeleteShader(self.vs)
+            #glDeleteProgram(self.prog) # This doesn't seem to have a binding.
+            self.prog = 0
 
 
 class RenderState:
@@ -384,6 +390,7 @@ class Material:
                     glBindTexture(GL_TEXTURE_2D, tex_id)
                     glActiveTexture(GL_TEXTURE0)
                     uniforms[name] = 0
+
             for name,val in self.uniform_defaults.items():
                 if name not in uniforms: uniforms[name] = val
 
@@ -444,24 +451,6 @@ class Mesh:
             material = model.materials[material]
 
             material.use(rs, prim['attrs'], uniforms, model)
-
-            '''
-            if 'pbrMetallicRoughness' not in material:
-                print('WARNING: unsupported shader, falling back to basic shader.')
-                material = None
-            if material is None:
-                shader = rs.getShader('basic')
-                shader.use(model, prim['attrs'], uniforms)
-            else:
-                glEnable(GL_TEXTURE_2D)
-                shader = rs.getShader('basicTextured')
-                tex_id = model.gl_textures[material['pbrMetallicRoughness']['baseColorTexture']['index']]
-                glActiveTexture(GL_TEXTURE0)
-                glBindTexture(GL_TEXTURE_2D, tex_id)
-                uniforms['diffuseSampler'] = 0
-                shader.use(model, prim['attrs'], uniforms)
-                print('using tex', tex_id)
-            '''
 
             # Draw.
             idx_acc = prim.get('index_accessor', None)
@@ -630,6 +619,25 @@ class GltfModel:
         s += '\n    - Nodes ({}):'.format(len(self.nodes))
         return s
 
+    def __del__(self):
+        glDeleteBuffers(len(self.bos),self.bos)
+        glDeleteTextures(len(self.gl_textures),self.gl_textures)
+        self.gl_textures, self.bos = [], []
+
+
+class ProgramContainer(dict):
+    def __init__(self, d):
+        self.d = d
+        self.cnts = {k:0 for k in d}
+    def markModelUses(self, name):
+        self.cnts[name] += 1
+    def decrementModelUses(self, name):
+        self.cnts[name] -= 1
+        if self.cnts[name] == 0:
+            print(' - Freeing program',name)
+            del self.d[name]
+            del self.cnts[name]
+
 
 def make_shaders():
     basic = Shader('''
@@ -694,7 +702,7 @@ if __name__ == '__main__':
     last_time = time.time()
     avg_dt = 0
     fpss = []
-    for i in range(10000):
+    for i in range(1000):
         glutMainLoopEvent()
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
 
@@ -717,7 +725,13 @@ if __name__ == '__main__':
         last_time = now_time
         fpss.append(1./avg_dt)
 
+
     import matplotlib.pyplot as plt
     plt.title('fps'); plt.plot(fpss); plt.show()
 
     print(model)
+    del shaders
+    del model
+    model = 0
+    import gc
+    gc.collect()

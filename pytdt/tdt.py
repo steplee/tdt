@@ -90,15 +90,13 @@ class B3DM:
             print(' - Corrupted Feature/Batch Table!')
             print('   Will still search for glTF and use empty tables for both!')
             featureTable = '{"BATCH_LENGTH":0}'.encode('ascii')
-            while len(featureTable) % 4 != 0:
+            while len(featureTable) % 4 != 0: # Zero pad to meet alignment constraint.
                 featureTable += bytes([0x20])
             featureTableJsonLen = len(featureTable)
             featureTableBinLen = 0
             featureTableLen = featureTableJsonLen + featureTableBinLen
             batchTable = b''
-            batchTableLen = 0
-            batchTableJsonLen = 0
-            batchTableBinLen = 0
+            batchTableJsonLen = batchTableBinLen = 0
             batchTableLen = batchTableJsonLen + batchTableBinLen
             offset = bits.find(b'glTF')
             if offset == -1:
@@ -140,3 +138,4 @@ class B3DM:
 if __name__ == '__main__':
     ts = Tileset('./assets/tileset2.json')
     print(ts)
+    del ts
