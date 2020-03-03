@@ -5,11 +5,15 @@ import OpenGL.GL.shaders
 import cv2
 import time
 from ctypes import c_void_p
+from copy import deepcopy
 
 
 '''
-TODO: Seperate all loading functions from all GL upload functions. Not only
-is it a better design, but it allows loading from disk on another thread.
+The design here is very messy, high coupled, and incoherent.
+I aim to do the simplest thing, not necessary the best designed.
+This, alongside adding more features (like KHR_techniques_webgl) leads to some
+spaghetti code.
+In some parts, the mixing of responsibility is horrible programming practice ... but it works
 '''
 
 def ortho_z_forward(left, right, bottom, top, near, far):
@@ -33,11 +37,14 @@ def look_at_z_forward(eye, center, up):
     mt[:3,3] = -eye
     return m @ mt
 
-def readFile(f_, possiblePaths, sz=-1):
+def readFile(f_, possiblePaths, sz=-1, binary=True):
     for path in possiblePaths:
         f = os.path.join(path, f_)
         if os.path.exists(f):
-            with open(f, 'rb') as fp: return fp.read(sz)
+            if binary:
+                with open(f, 'rb') as fp: return fp.read(sz)
+            else:
+                with open(f, 'r') as fp: return fp.read(sz)
 
 def load_image(j, possiblePaths, bufferViews=None, glbBuffer=None, buffers=None):
     if 'uri' in j:
@@ -124,11 +131,81 @@ def parse_any_transform(j):
     else:
         return None
 
+# https://github.com/KhronosGroup/glTF/tree/master/extensions/2.0/Khronos/KHR_techniques_webgl
+# We call the constructor with data from Model().
+# In Model::upload(), we call uploadReturnShader(). We pass a dict of already created programs,
+# if a program already exists with the technique's name, we return None, otherwise a new Shader().
+# At render time, we need to manage the default uniform. Do this by having material write to renderState.
+def handle_auto_uniforms(src):
+    if 'czm_sunDirectionEC' in src:
+        end = src.find(';')+1
+        src = src[:end] + 'uniform vec3 czm_sunDirectionEC = vec3(1.0,0.0,0.0);' + src[end:]
+    return src
+class KhrTechniquesWebgl:
+    def __init__(self, assetExtensions, assetMaterials, possiblePaths, bufferViews, cpuBuffers):
+        assert('KHR_techniques_webgl' in assetExtensions)
+        self.techSpec = assetExtensions['KHR_techniques_webgl']
+        # Parse Shaders.
+        shaderSpecs = self.techSpec['shaders']
+        self.cpuShaders = []
+        for shaderSpec in shaderSpecs:
+            if 'uri' in shaderSpec:
+                src = readFile(shaderSpec['uri'], possiblePaths, binary=False)
+            else:
+                bv = bufferViews[shaderSpec['bufferView']]
+                src = cpuBuffers[bv['buffer']][bv['byteOffset']:bv['byteOffset']+bv['byteLength']]
+                src = src.decode('ascii')
+            if '#version' not in src: src = '#version 120\n' + src # Seems we sometimes need this.
+            src = handle_auto_uniforms(src)
+            type = shaderSpec['type']
+            name = shaderSpec.get('name',None)
+            self.cpuShaders.append((name, src, type))
+        # Parse Programs.
+        self.cpuPrograms = self.techSpec['programs']
+        # Parse Techniques.
+        self.techniques = self.techSpec['techniques']
+        # Parse Materials.
+        self.materials = [m for m in assetMaterials if 'extensions' in m and 'KHR_techniques_webgl' in m['extensions']]
+
+        self.shaders = [None]*len(self.cpuShaders)
+        self.programs = {}
+
+
+    def uploadReturnPrograms(self, dictOfPrograms, dictOfMaterials):
+        # Only compile shaders if the program doesn't already exist.
+        for prog in self.cpuPrograms:
+            if 'name' not in prog:
+                print("\nWARNING:\n\tPassing 'name' field in KHR_techniques_webgl's program is highly recommended")
+                prog['name'] = 'program_'+str(hash(time.time()))[:10]
+            if prog['name'] in dictOfPrograms:
+                self.programs.append(dictOfPrograms[prog['name']])
+                continue
+            fs = self.shaders[prog['fragmentShader']]
+            if fs is None:
+                name, src, type = self.cpuShaders[prog['fragmentShader']]
+                fs = self.shaders[prog['fragmentShader']] = OpenGL.GL.shaders.compileShader(src, type)
+            vs = self.shaders[prog['vertexShader']]
+            if vs is None:
+                name, src, type = self.cpuShaders[prog['vertexShader']]
+                vs = self.shaders[prog['vertexShader']] = OpenGL.GL.shaders.compileShader(src, type)
+            gl_program = OpenGL.GL.shaders.compileProgram(vs, fs)
+            self.programs[prog['name']] = Shader(prog=gl_program)
+
+
+        return self.programs
+
+
+
+
+
 class Shader:
-    def __init__(self, vsrc, fsrc):
-        vs = OpenGL.GL.shaders.compileShader(vsrc, GL_VERTEX_SHADER)
-        fs = OpenGL.GL.shaders.compileShader(fsrc, GL_FRAGMENT_SHADER)
-        self.prog = OpenGL.GL.shaders.compileProgram(vs, fs)
+    def __init__(self, vsrc=None, fsrc=None, prog=None):
+        if prog is not None:
+            self.prog = prog
+        else:
+            vs = OpenGL.GL.shaders.compileShader(vsrc, GL_VERTEX_SHADER)
+            fs = OpenGL.GL.shaders.compileShader(fsrc, GL_FRAGMENT_SHADER)
+            self.prog = OpenGL.GL.shaders.compileProgram(vs, fs)
         assert(self.prog > 0)
 
         # Find attributes and uniforms.
@@ -144,9 +221,11 @@ class Shader:
             l,s,t,n = '',bytes([0]*32),bytes([0]*32),bytes([0]*32)
             r = glGetActiveAttrib(self.prog, i, 32,l,s,t,n)
             n = n.decode('ascii').strip('\t\r\n\0')
-            #print(s,t,n)
-            allAttributes[n] = i
+            print(i,s,t,n)
+            loc = glGetAttribLocation(self.prog, n)
+            allAttributes[n] = loc
         self.allAttribs, self.allUnis = allAttributes, allUniforms
+        print(' - Program', self.prog)
         print(' - Program Attribs :', (self.allAttribs))
         print(' - Program Uniforms:', (self.allUnis))
         glUseProgram(0)
@@ -170,18 +249,23 @@ class Shader:
             u_id = self.allUnis.get(uni, None)
             if u_id is None:
                 print(' - failed to use uniform  ',uni)
-                return
+                continue
             if type(val) == int or val.dtype == np.uint32 or (val.shape==(1,) and val.dtype==int):
                 glUniform1i(u_id, val)
             elif val.shape == (4,4):
                 glUniformMatrix4fv(u_id, 1,False, val.T) # note: transpose!
+            elif val.shape == (3,3):
+                glUniformMatrix3fv(u_id, 1,False, val.T) # note: transpose!
             elif val.shape == (3,):
                 glUniform3f(u_id, *val)
             elif type(val) == float:
                 glUniform1f(u_id, val)
             elif val.shape == (4,):
                 glUniform4f(u_id, *val)
+            elif val.shape == (1,) or val.shape == ():
+                glUniform1f(u_id, val)
             else:
+                print(uni,val, type(val), val.dtype, val.shape)
                 assert(False)
 
     def unuse(self):
@@ -226,19 +310,107 @@ class AttributeSpec:
         self.name, self.buffer, self.count, self.offset, self.stride, self.type, self.compType \
             = name, buffer, count, c_void_p(offset), stride, type, compType
 
+DEFAULT_SEMANTIC_TO_ATTRIBUTE = {
+    'POSITION': 'a_position',
+    'NORMAL': 'a_normal',
+    'TEXCOORD_0': 'a_uv',
+    'TANGENT': 'a_tangent',
+}
+
+# this is a MESS
+class Material:
+    PBR = 0 # Not supported yet.
+    BASIC = 1
+    BASIC_TEXTURED = 2
+    TECHNIQUE_WEBGL = 3
+    def __init__(self, spec, techniqueContainer=None):
+        # Ideally we would have just two kinds of materials: PBR and WebglTechnique.
+        # But I have not written the shader for PBR yet.
+        self.type = Material.BASIC
+        self.spec = spec
+        self.semantic2attribute = DEFAULT_SEMANTIC_TO_ATTRIBUTE
+        if 'pbrMetallicRoughness' in spec and 'baseColorTexture' in spec:
+            self.type = Material.BASIC_TEXTURED
+            self.tex_in_model = spec['pbrMetallicRoughness']['baseColorTexture']['index']
+        elif 'extensions' in spec and 'KHR_techniques_webgl' in spec['extensions']:
+            assert(techniqueContainer)
+            self.type = Material.TECHNIQUE_WEBGL
+            instance_tech = spec['extensions']['KHR_techniques_webgl']
+            ts = instance_tech['technique']
+            self.technique = techniqueContainer.techSpec['techniques'][ts]
+            self.programName = techniqueContainer.cpuPrograms[self.technique['program']]['name']
+
+            self.semantic2attribute = dict(DEFAULT_SEMANTIC_TO_ATTRIBUTE)
+            for k,v in self.technique['attributes'].items():
+                self.semantic2attribute[v['semantic']] = k
+            print('webgl semantics', self.semantic2attribute)
+
+            self.uniform_defaults = {}
+            self.uniform_samplers = {}
+            self.uniforms = (self.technique['uniforms'])
+            for k,v in instance_tech['values'].items():
+                if k in self.uniforms:
+                    if self.technique['uniforms'][k]['type'] == 35678:
+                        self.uniform_samplers[k] = (v['index'], v.get('texCoord',0))
+                    else:
+                        self.uniform_defaults[k] = np.array(v)
+                else:
+                    print('BAD KHR_TECHNIQUE: got value for uniform ({}), but it was not in the main technique spec!!!'.format(k))
+
+
+    # Returns
+    def use(self, rs, attrs, uniforms, model):
+        if self.type == Material.BASIC:
+            shader = rs.getShader('basic')
+            shader.use(model, attrs, uniforms)
+        elif self.type == Material.BASIC_TEXTURED:
+            glEnable(GL_TEXTURE_2D)
+            shader = rs.getShader('basicTextured')
+            tex_id = model.gl_textures[self.tex_in_model]
+            glActiveTexture(GL_TEXTURE0)
+            glBindTexture(GL_TEXTURE_2D, tex_id)
+            uniforms['diffuseSampler'] = 0
+            shader.use(model, attrs, uniforms)
+            print('using tex', tex_id)
+        elif self.type == Material.TECHNIQUE_WEBGL:
+            glEnable(GL_TEXTURE_2D)
+            shader = rs.getShader(self.programName)
+
+            for name,(cpu_tex_id,texCoord) in self.uniform_samplers.items():
+                    tex_unit = 0 # It appears extension only supports one texture unit?
+                    #tex_unit = texCoord # I don't think this is correct.
+                    glActiveTexture(GL_TEXTURE0+tex_unit)
+                    tex_id = model.gl_textures[cpu_tex_id]
+                    glBindTexture(GL_TEXTURE_2D, tex_id)
+                    glActiveTexture(GL_TEXTURE0)
+                    uniforms[name] = 0
+            for name,val in self.uniform_defaults.items():
+                if name not in uniforms: uniforms[name] = val
+
+            #glBindTexture(GL_TEXTURE_2D, tex_id)
+            shader.use(model, attrs, uniforms)
+
+        self.curShader = shader
+
+    def unuse(self):
+        self.curShader.unuse()
+        self.curShader = None
+
+
 class Mesh:
-    def __init__(self, j, accessors, bufferViews):
+    def __init__(self, j, accessors, bufferViews, materials):
         self.name = j.get('name', '')
         self.primitives = []
         #self.primitives = j.get('primitives', [])
         for prim in j.get('primitives', []):
             #attrs = {}
             attrs = []
+            material = prim.get('material', None)
             for attr,idx in prim['attributes'].items():
-                attr = attr.replace('POSITION','a_position')
-                attr = attr.replace('NORMAL','a_normal')
-                attr = attr.replace('TEXCOORD_0','a_uv')
-                attr = attr.replace('TANGENT','a_tangent')
+                if material is None:
+                    attr = DEFAULT_SEMANTIC_TO_ATTRIBUTE[attr]
+                else:
+                    attr = materials[material].semantic2attribute[attr]
                 acc = accessors[idx]
                 bv = bufferViews[acc['bufferView']]
                 buffer = bv['buffer']
@@ -249,9 +421,9 @@ class Mesh:
                 count = acc['count']
                 #attrs[attr] = dict(buffer=buffer,count=count,offset=offset,stride=stride,type=type,compType=compType)
                 attrs.append(AttributeSpec(attr, buffer,count,offset,stride,type,compType))
+                print('ATTRIBUTE',attr,buffer,count,offset,stride)
 
             index_accessor = prim.get('indices', None)
-            material = prim.get('material', None)
             mode = prim.get('mode', 0)
 
             self.primitives.append(dict(
@@ -261,11 +433,19 @@ class Mesh:
 
     def render(self, model, rs):
         uniforms = {'mvp': rs.mvp()}
+        uniforms['u_modelViewMatrix'] = rs.view
+        uniforms['u_normalMatrix'] = np.eye(3,dtype=np.float32)
+        uniforms['u_projectionMatrix'] = rs.proj
+        uniforms['czm_sunDirectionEC'] = np.array((np.sin(time.time()),np.cos(time.time()),np.cos(time.time())+np.sin(time.time())))
         print(' - rendering {} primitives.'.format(len(self.primitives)))
         for prim in self.primitives:
             # Use Shader + Material.
             material = prim.get('material', None)
             material = model.materials[material]
+
+            material.use(rs, prim['attrs'], uniforms, model)
+
+            '''
             if 'pbrMetallicRoughness' not in material:
                 print('WARNING: unsupported shader, falling back to basic shader.')
                 material = None
@@ -281,6 +461,7 @@ class Mesh:
                 uniforms['diffuseSampler'] = 0
                 shader.use(model, prim['attrs'], uniforms)
                 print('using tex', tex_id)
+            '''
 
             # Draw.
             idx_acc = prim.get('index_accessor', None)
@@ -299,7 +480,7 @@ class Mesh:
             glDisable(GL_TEXTURE_2D)
             glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0)
             glBindBuffer(GL_ARRAY_BUFFER, 0)
-            shader.unuse()
+            if material: material.unuse()
 
 class Node:
     def __init__(self, j):
@@ -361,51 +542,76 @@ class GltfModel:
         # And finish.
         self.parse_json_and_load()
 
+    # Parse and load all data onto CPU (do not touch gpu)
     def parse_json_and_load(self):
-        # Buffers (GL).
-        buffers = self.j['buffers']
+        # Buffers.
+        bufferSpecs = self.j['buffers']
         self.bos = []
+        self.cpuBuffers = []
         if self.glbBuffer is not None:
-            assert(len(buffers) == 1)
-            # It *appears* that for glBufferData we can bind to GL_ELEMENT_ARRAY_BUFFER or
-            # GL_ARRAY_BUFFER, and it makes no difference. That is great news because for
-            # the GLB format there is only one buffer!
-            # If this were not the case, we'd need a VBO/IBO per bufferView (this is actually what
-            # the tinygltf example does, so I'm hoping the good behaviour is not just on my machine).
-            bo = glGenBuffers(1)
-            glBindBuffer(GL_ARRAY_BUFFER, bo)
-            glBufferData(GL_ARRAY_BUFFER, buffers[0]['byteLength'], self.glbBuffer, GL_STATIC_DRAW)
-            glBindBuffer(GL_ARRAY_BUFFER, 0)
-            self.bos.append(bo)
+            assert(len(bufferSpecs) == 1)
+            self.cpuBuffers = [self.glbBuffer]
         else:
-            for buffer in buffers:
+            for buffer in bufferSpecs:
                 if 'uri' in buffer:
                     data = readFile(buffer['uri'], possiblePaths=self.possiblePaths)
-                    #assert(buffer['byteLength'] == len(data))
-                    bo = glGenBuffers(1)
-                    target = buffer.get('target', GL_ARRAY_BUFFER)
-                    glBindBuffer(target, bo)
-                    glBufferData(target, buffer['byteLength'], data, GL_STATIC_DRAW)
-                    glBindBuffer(target, 0)
-                    self.bos.append(bo)
+                    self.cpuBuffers.append(data)
+                else:
+                    assert(False and 'todo: parse base64')
         # Views.
         self.bufferViews = self.j['bufferViews']
         # Accessors.
         self.accessors = [parse_accessor(jj) for jj in self.j['accessors']]
         # Images.
         if 'images' in self.j:
-            images = [load_image(img_, possiblePaths=self.possiblePaths, \
+            self.images = [load_image(img_, possiblePaths=self.possiblePaths, \
                                  bufferViews=self.bufferViews,glbBuffer=self.glbBuffer) for img_ in self.j.get('images',[])]
         # Samplers.
         self.samplers = self.j.get('samplers', [])
         # Textures (GL).
-        self.gl_textures = [make_texture(t, images, self.samplers) for t in self.j.get('textures',[])]
-        # Materials.
-        self.materials = [parse_material(m) for m in self.j['materials']]
-        # Meshes.
-        self.meshes = [Mesh(m, self.accessors, self.bufferViews) for m in self.j['meshes']]
+        self.texture_specs = self.j.get('textures',[])
+        self.gl_textures = []
         # Nodes.
         self.nodes = [Node(n) for n in self.j['nodes']]
+
+        # WebGL Techniques
+        self.techniqueContainer = None
+        if 'KHR_techniques_webgl' in self.j.get('extensionsUsed', []):
+            self.techniqueContainer = KhrTechniquesWebgl(self.j['extensions'],self.j['materials'],self.possiblePaths,
+                    self.bufferViews, self.cpuBuffers)
+
+        self.materials = [Material(m, self.techniqueContainer) for m in self.j['materials']]
+
+        # Meshes.
+        self.meshes = [Mesh(m, self.accessors, self.bufferViews, self.materials) for m in self.j['meshes']]
+
+        self.glbBuffer = None
+
+
+    # Upload to gpu, delete some of the larger cpu arrays (cpuBuffers, images)
+    def upload(self):
+        # Upload buffer objects.
+        self.bos = np.array([glGenBuffers(len(self.cpuBuffers))]).ravel()
+        for i, bo in enumerate(self.bos):
+            # It *appears* that for glBufferData we can bind to GL_ELEMENT_ARRAY_BUFFER or
+            # GL_ARRAY_BUFFER, and it makes no difference. That is great news because for
+            # the GLB format there is only one buffer!
+            # If this were not the case, we'd need a VBO/IBO per bufferView (this is actually what
+            # the tinygltf example does, so I'm hoping the good behaviour is not just on my machine).
+            glBindBuffer(GL_ARRAY_BUFFER, bo)
+            glBufferData(GL_ARRAY_BUFFER, len(self.cpuBuffers[i]), self.cpuBuffers[i], GL_STATIC_DRAW)
+            glBindBuffer(GL_ARRAY_BUFFER, 0)
+        self.cpuBuffers = []
+        # Upload textures.
+        self.gl_textures = [make_texture(t, self.images, self.samplers) for t in self.texture_specs]
+        self.images = []
+        # Create vertex arrays (todo)
+
+
+    def compileShaders(self, dictOfPrograms):
+        if self.techniqueContainer:
+            return self.techniqueContainer.uploadReturnPrograms(dictOfPrograms,{})
+        return []
 
 
     def renderNode(self, idx, rs):
@@ -416,10 +622,10 @@ class GltfModel:
         s = ''
         name = self.path if hasattr(self, 'path') else 'glb'
         s += '\n GltfModel ({}):'.format(name)
-        s += '\n    - Buffers ({}):'.format(len(self.bos))
+        s += '\n    - Buffers ({}cpu {}uploaded):'.format(len(self.cpuBuffers), len(self.bos))
         s += '\n    - BufferViews ({}):'.format(len(self.bufferViews))
         s += '\n    - Accessors ({}):'.format(len(self.accessors))
-        s += '\n    - Textures ({}):'.format(len(self.gl_textures))
+        s += '\n    - Textures ({}cpu {}uploaded):'.format(len(self.texture_specs), len(self.gl_textures))
         s += '\n    - Meshes ({}):'.format(len(self.meshes))
         s += '\n    - Nodes ({}):'.format(len(self.nodes))
         return s
@@ -473,14 +679,17 @@ if __name__ == '__main__':
     #model = GltfModel(path='/home/slee/stuff/tdt/3rdparty/tinygltf/models/Cube/Cube.gltf')
     model = GltfModel(path='/home/slee/stuff/tdt/assets/d2.glb')
     #model = GltfModel(path='/home/slee/stuff/tdt/assets/v.glb')
+    model.upload()
+    shaders.update(model.compileShaders(shaders))
+    print('SHADERS:', list(shaders.keys()))
 
     glClearColor(0,0,0,1)
     glColor4f(1,1,1,1)
 
     fov = 80
-    z_near = 1
+    z_near = 5
     u,v = np.tan(np.deg2rad(fov/2)), np.tan(np.deg2rad(fov/2))
-    proj = frustum_z_forward(-u,u,-v,v,z_near,1000)
+    proj = frustum_z_forward(-u,u,-v,v,z_near,300)
 
     last_time = time.time()
     avg_dt = 0
@@ -490,8 +699,8 @@ if __name__ == '__main__':
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
 
         view = look_at_z_forward(
-                #np.array((0,5*np.sin(time.time()),-9.),dtype=np.float32),
-                np.array((np.sin(time.time()*2)*12,0,np.cos(time.time()*2)*12),dtype=np.float32),
+                np.array((np.sin(time.time()*2)*40,0,np.cos(time.time()*2)*40),dtype=np.float32),
+                #np.array((np.sin(time.time()*.4)*520,20000,np.cos(time.time()*.4)*520),dtype=np.float32),
                 np.zeros(3,dtype=np.float32),
                 np.array((0,1.,0),dtype=np.float32))
         rs = RenderState(view,proj,shaders=shaders)

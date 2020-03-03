@@ -20,6 +20,7 @@ class Tileset:
         self.geometricError = self.j['geometricError']
         self.root = Tile(self, self.j['root'])
         self.root.load()
+        self.root.upload()
 
     def __repr__(self): return str(self)
     def __str__(self):
@@ -29,11 +30,11 @@ class Tileset:
         s += '\n    - root:' + str(self.root).replace('\n','\n\t')
         return s
 
-
 class Tile:
     def __init__(self, tileset, j):
         self.tileset = tileset
         self.j = j
+        self.content = None
         self.parse()
 
     def parse(self):
@@ -42,6 +43,9 @@ class Tile:
         self.geometricError = self.j['geometricError']
         self.refine = self.j['refine']
 
+    def upload(self):
+        assert(self.content)
+        self.content.upload()
 
     def load(self):
         if 'url' in self.j['content']:
@@ -118,6 +122,9 @@ class B3DM:
             print('      Use the tool "./convert_b3dm_gltf1_to_gltf2/convert.py" to upgrade glTF 1 -> 2')
 
         self.model = GltfModel(glb=glb_bytes)
+
+    def upload(self):
+        self.model.upload()
 
     def __repr__(self): return str(self)
     def __str__(self):
