@@ -5,6 +5,7 @@ import ignite
 from ignite.engine import create_supervised_trainer, Events, Engine
 from ignite.metrics import Accuracy
 from matplotlib.cm import inferno
+from ignite.handlers import Checkpoint, DiskSaver
 
 from .dataset import AerialImageLabelingDataset, fix_batch
 
@@ -36,7 +37,7 @@ if False:
     opt = torch.optim.Adam(model.parameters(), lr)
 else:
     mods = list(model.children())
-    mods = [mods[-3][-1], mods[-1]]
+    mods = [*mods[-3][-5:], mods[-1]]
     ps = []
     for m in mods:
         print('optimizing layer', m)
@@ -45,12 +46,16 @@ else:
 #criterion = nn.NLLLoss()
 criterion = nn.BCEWithLogitsLoss()
 
-viz_every = 20
+viz_every = 50
 viz_batches = 4
 checkpoint_every = 500
 
 #evaluator = create_supervised_evaluator(model, metrics={'acc':Accuracy()})
 trainer = create_supervised_trainer(model, opt, criterion)
+
+to_save = {'model': model, 'optimizer': opt, 'trainer': trainer}
+handler = Checkpoint(to_save, DiskSaver('./saves/', create_dir=True), n_saved=2)
+trainer.add_event_handler(Events.ITERATION_COMPLETED(every=500), handler)
 
 viz_cnt = 0
 def viz(engine, batch):
