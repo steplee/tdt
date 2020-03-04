@@ -85,10 +85,14 @@ class AerialImageLabelingDataset(torch.utils.data.Dataset):
 IMGNET_MU = torch.cuda.FloatTensor([.4,.4,.4]).view(1,3,1,1)
 IMGNET_SIG = torch.cuda.FloatTensor([.2,.2,.2]).view(1,3,1,1)
 def fix_batch(b):
-    x = torch.cat(tuple(b[0]), dim=0).cuda().to(torch.float32)
-    y = torch.cat(tuple(b[1]), dim=0).cuda().to(torch.float32)
+    if len(b[0].shape) == 5:
+        x = torch.cat(tuple(b[0]), dim=0).cuda().to(torch.float32)
+        y = torch.cat(tuple(b[1]), dim=0).cuda().to(torch.float32)
+    else:
+        x = b[0].cuda().to(torch.float32)
+        y = b[1].cuda().to(torch.float32)
 
-    x.div_(255.).sub_(.4).div_(.25)
+    #x.div_(255.).sub_(.4).div_(.25)
     x.div_(255.).sub_(IMGNET_MU).div_(IMGNET_SIG)
 
     y.div_(255.)
