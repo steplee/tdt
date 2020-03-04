@@ -685,8 +685,9 @@ if __name__ == '__main__':
     shaders = make_shaders()
 
     #model = GltfModel(path='/home/slee/stuff/tdt/3rdparty/tinygltf/models/Cube/Cube.gltf')
-    model = GltfModel(path='/home/slee/stuff/tdt/assets/d2.glb')
-    #model = GltfModel(path='/home/slee/stuff/tdt/assets/v.glb')
+    #model = GltfModel(path='/home/slee/stuff/tdt/assets/d2.glb')
+    #model = GltfModel(path='/home/slee/stuff/tdt/out/buildings.glb')
+    model = GltfModel(path='/home/slee/stuff/tdt/assets/v.glb')
     model.upload()
     shaders.update(model.compileShaders(shaders))
     print('SHADERS:', list(shaders.keys()))
@@ -694,21 +695,21 @@ if __name__ == '__main__':
     glClearColor(0,0,0,1)
     glColor4f(1,1,1,1)
 
-    fov = 80
+    fov = 70
     z_near = 5
     u,v = np.tan(np.deg2rad(fov/2)), np.tan(np.deg2rad(fov/2))
-    proj = frustum_z_forward(-u,u,-v,v,z_near,300)
+    proj = frustum_z_forward(-u,u,-v,v,z_near,30000)
 
     last_time = time.time()
     avg_dt = 0
     fpss = []
-    for i in range(1000):
+    for i in range(10000):
         glutMainLoopEvent()
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
 
         view = look_at_z_forward(
-                np.array((np.sin(time.time()*2)*40,0,np.cos(time.time()*2)*40),dtype=np.float32),
-                #np.array((np.sin(time.time()*.4)*520,20000,np.cos(time.time()*.4)*520),dtype=np.float32),
+                #np.array((np.sin(time.time()*2)*40,0,np.cos(time.time()*2)*40),dtype=np.float32),
+                np.array((np.sin(time.time()*.4)*520,15000,np.cos(time.time()*.4)*520),dtype=np.float32),
                 np.zeros(3,dtype=np.float32),
                 np.array((0,1.,0),dtype=np.float32))
         rs = RenderState(view,proj,shaders=shaders)

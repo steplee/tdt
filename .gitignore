@@ -2,6 +2,8 @@ build
 node_modules
 **/node_modules
 __pycache__
+out
+out.tot
 *.so
 *.a
 *.o
